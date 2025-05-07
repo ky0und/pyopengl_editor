@@ -88,12 +88,16 @@ def main():
 
                 elif event.key == pg.K_LEFT:
                     cursor.move_left(editor_buffer)
+                    action_taken = True
                 elif event.key == pg.K_RIGHT:
                     cursor.move_right(editor_buffer)
+                    action_taken = True
                 elif event.key == pg.K_UP:
                     cursor.move_up(editor_buffer)
+                    action_taken = True
                 elif event.key == pg.K_DOWN:
                     cursor.move_down(editor_buffer)
+                    action_taken = True
                 elif event.unicode:
                     if event.unicode.isprintable() or event.unicode == '\t':
                         # Only current line content changes.
