@@ -5,6 +5,7 @@ from editor.buffer import Buffer
 from rendering.renderer import EditorRenderer
 from editor.cursor import Cursor
 from editor.modes import EditorMode, EditorState
+from input_handling.keyboard_handler import KeyboardHandler
 
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
@@ -40,6 +41,8 @@ def main():
     cursor = Cursor()
     editor_state = EditorState()
 
+    keyboard_handler = KeyboardHandler(editor_buffer, editor_state, cursor, editor_renderer)
+
     editor_renderer._calculate_visible_lines(SCREEN_HEIGHT)
 
     running = True
@@ -52,133 +55,17 @@ def main():
                 running = False
             
             if event.type == pg.KEYDOWN:
-                action_taken = False
 
-                cursor_line_before_move = cursor.line
+                action_taken_by_handler = keyboard_handler.handle_keydown(event)
 
-                # --- Mode Independent Keys ---
-                if event.key == pg.K_ESCAPE:
-                    if editor_state.mode == EditorMode.INSERT:
-                        editor_state.switch_to_mode(EditorMode.NORMAL)
-                        current_line_text = editor_buffer.get_line(cursor.line)
-                        if cursor.col > 0 and cursor.col <= len(current_line_text):
-                             cursor.col -= 1
-                        action_taken = True
-
-
-                # --- NORMAL MODE --- (following https://vim.rtorr.com/)
-                if editor_state.mode == EditorMode.NORMAL:
-                    if not action_taken:
-                        if event.key == pg.K_i: # Insert mode (before cursor)
-                            editor_state.switch_to_mode(EditorMode.INSERT)
-                            action_taken = True
-                        elif event.key == pg.K_a: # Insert mode (append after cursor)
-                            current_line_text = editor_buffer.get_line(cursor.line)
-                            if cursor.col < len(current_line_text): # Don't go past EOL
-                                cursor.col += 1
-                            editor_state.switch_to_mode(EditorMode.INSERT)
-                            action_taken = True
-                        elif event.key == pg.K_o:
-                            if pg.key.get_mods() & pg.KMOD_SHIFT: # 'O' - Open line above
-                                editor_renderer.handle_lines_inserted(insert_idx=cursor.line, num_inserted_lines=1)
-                                editor_buffer.lines.insert(cursor.line, "")
-                                cursor.col = 0
-                                editor_state.switch_to_mode(EditorMode.INSERT)
-                                action_taken = True
-                            else: # 'o' - Open line below
-                                editor_renderer.handle_lines_inserted(insert_idx=cursor.line + 1, num_inserted_lines=1)
-                                editor_buffer.lines.insert(cursor.line + 1, "")
-                                cursor.line += 1
-                                cursor.col = 0
-                                editor_state.switch_to_mode(EditorMode.INSERT)
-                                action_taken = True
-                        elif event.key == pg.K_x: # 'x' - delete character under cursor
-                            current_line_text = editor_buffer.get_line(cursor.line)
-                            if current_line_text is not None and cursor.col < len(current_line_text):
-                                editor_renderer.invalidate_line_cache(cursor.line)
-                                editor_buffer.delete_char_at_cursor(cursor.line, cursor.col)
-                                # Cursor position remains, unless it was on the last char of the line
-                                # Vim's 'x' on last char moves cursor left if possible
-                                if cursor.col >= len(editor_buffer.get_line(cursor.line)) and cursor.col > 0 :
-                                    cursor.col -=1
-                                action_taken = True
-                        elif event.key == pg.K_h: # 'h' - move cursor left
-                            cursor.move_left(editor_buffer, mode_is_normal=True)
-                            action_taken = True
-                        elif event.key == pg.K_j: # 'j' - move cursor down
-                            if cursor.line == editor_state.viewport_start_line + editor_renderer.visible_lines_in_viewport - 1 and \
-                               cursor.line < editor_buffer.get_line_count() - 1:
-                                editor_state.viewport_start_line += 1
-                            cursor.move_down(editor_buffer)
-                            action_taken = True
-                        elif event.key == pg.K_k: # 'k' - move cursor up
-                            if cursor.line == editor_state.viewport_start_line and \
-                               cursor.line > 0:
-                                editor_state.viewport_start_line -= 1
-                            cursor.move_up(editor_buffer)
-                            action_taken = True
-                        elif event.key == pg.K_l: # 'l' - move cursor right
-                            cursor.move_right(editor_buffer, mode_is_normal=True)
-                            action_taken = True
-                        # TODO Add other normal mode commands here (x, dd, yy, p etc.)
-
-                # --- INSERT MODE --- (following https://vim.rtorr.com/)
-                elif editor_state.mode == EditorMode.INSERT:
-                    if not action_taken:
-                        if event.key == pg.K_RETURN:
-                            editor_renderer.invalidate_line_cache(cursor.line)
-                            editor_renderer.handle_lines_inserted(insert_idx=cursor.line + 1, num_inserted_lines=1)
-                            editor_buffer.split_line(cursor.line, cursor.col)
-                            cursor.line += 1
-                            cursor.col = 0
-                            action_taken = True
-                        elif event.key == pg.K_BACKSPACE:
-                            if cursor.col > 0:
-                                editor_renderer.invalidate_line_cache(cursor.line)
-                                editor_buffer.delete_char(cursor.line, cursor.col)
-                                cursor.col -= 1
-                            elif cursor.line > 0:
-                                editor_renderer.invalidate_line_cache(cursor.line - 1)
-                                editor_renderer.handle_lines_deleted(delete_idx=cursor.line, num_deleted_lines=1)
-                                prev_line_len = len(editor_buffer.get_line(cursor.line - 1))
-                                editor_buffer.delete_char(cursor.line, 0)
-                                cursor.line -= 1
-                                cursor.col = prev_line_len
-                            action_taken = True
-                        elif event.key == pg.K_LEFT:
-                            cursor.move_left(editor_buffer, mode_is_normal=False)
-                            action_taken = True
-                        elif event.key == pg.K_RIGHT:
-                            cursor.move_right(editor_buffer, mode_is_normal=False)
-                            action_taken = True
-                        elif event.key == pg.K_UP:
-                            if cursor.line == editor_state.viewport_start_line and \
-                               cursor.line > 0:
-                                editor_state.viewport_start_line -= 1
-                            cursor.move_up(editor_buffer)
-                            action_taken = True
-                        elif event.key == pg.K_DOWN:
-                            if cursor.line == editor_state.viewport_start_line + editor_renderer.visible_lines_in_viewport - 1 and \
-                               cursor.line < editor_buffer.get_line_count() - 1:
-                                editor_state.viewport_start_line += 1
-                            cursor.move_down(editor_buffer)
-                            action_taken = True
-                        elif event.unicode:
-                            if event.unicode.isprintable() or event.unicode == '\t':
-                                editor_renderer.invalidate_line_cache(cursor.line)
-                                if event.unicode == '\t':
-                                     for _ in range(4): # Simple tab to 4 spaces
-                                         editor_buffer.insert_char(cursor.line, cursor.col, ' ')
-                                         cursor.col += 1
-                                else:
-                                    editor_buffer.insert_char(cursor.line, cursor.col, event.unicode)
-                                    cursor.col += 1
-                                action_taken = True
-                
-                if action_taken:
+                if action_taken_by_handler:
                     cursor.visible = True
                     cursor.blink_timer = 0
 
+                if event.key == pg.K_ESCAPE and not action_taken_by_handler and editor_state.mode == EditorMode.NORMAL:
+                    # If in normal mode and Esc is pressed, quit.
+                    pass
+                
         if cursor.line < editor_state.viewport_start_line:
             editor_state.viewport_start_line = cursor.line
         elif cursor.line >= editor_state.viewport_start_line + editor_renderer.visible_lines_in_viewport:

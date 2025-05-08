@@ -13,7 +13,7 @@ A programming editor made with pyOpenGL
 - [ ] Core Editing & Modes
   - [x] Implement Modes  
   - [x] Keyboard Handler per Mode 
-      - [ ] Abstract the input system to input_handling/keyboard_handler.py
+      - [x] Abstract the input system to input_handling/keyboard_handler.py
   - [x] Cursor Movement Logic 
   - [ ] File Operations  
   - [x] Viewport & Basic Scrolling  
