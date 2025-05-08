@@ -40,10 +40,6 @@ def main():
     editor_renderer = EditorRenderer(FONT_PATH, FONT_SIZE)
     cursor = Cursor()
 
-    cursor_blink_timer = 0
-    cursor_visible = True
-    CURSOR_BLINK_RATE = 500 # milliseconds
-
     running = True
     while running:
         dt = clock.tick(FPS)
@@ -67,14 +63,12 @@ def main():
                     
                     cursor.line += 1
                     cursor.col = 0
-                    action_taken = True
                     
                 elif event.key == pg.K_BACKSPACE:
                     if cursor.col > 0: # Character deleted within the current line.
                         editor_renderer.invalidate_line_cache(cursor.line)
                         editor_buffer.delete_char(cursor.line, cursor.col)
                         cursor.col -= 1
-                        action_taken = True
                     elif cursor.line > 0: # Backspace at start of a line, merging with previous
                         editor_renderer.invalidate_line_cache(cursor.line - 1)
                         editor_renderer.handle_lines_deleted(delete_idx=cursor.line, num_deleted_lines=1)
@@ -84,20 +78,15 @@ def main():
                         
                         cursor.line -= 1
                         cursor.col = prev_line_len
-                        action_taken = True
 
                 elif event.key == pg.K_LEFT:
                     cursor.move_left(editor_buffer)
-                    action_taken = True
                 elif event.key == pg.K_RIGHT:
                     cursor.move_right(editor_buffer)
-                    action_taken = True
                 elif event.key == pg.K_UP:
                     cursor.move_up(editor_buffer)
-                    action_taken = True
                 elif event.key == pg.K_DOWN:
                     cursor.move_down(editor_buffer)
-                    action_taken = True
                 elif event.unicode:
                     if event.unicode.isprintable() or event.unicode == '\t':
                         # Only current line content changes.
@@ -110,20 +99,18 @@ def main():
                         else:
                             editor_buffer.insert_char(cursor.line, cursor.col, event.unicode)
                             cursor.col += 1
-                        action_taken = True
                 
-                if action_taken:
-                    cursor_visible = True
-                    cursor_blink_timer = 0
+                cursor.visible = True
+                cursor.blink_timer = 0
                     
-        cursor_blink_timer += dt
-        if cursor_blink_timer >= CURSOR_BLINK_RATE:
-            cursor_blink_timer = 0
-            cursor_visible = not cursor_visible
+        cursor.blink_timer += dt
+        if cursor.blink_timer >= cursor.blink_rate:
+            cursor.blink_timer = 0
+            cursor.visible = not cursor.visible
 
         glClear(GL_COLOR_BUFFER_BIT)
         editor_renderer.render_buffer(editor_buffer)
-        editor_renderer.render_cursor(cursor, editor_buffer, cursor_visible)
+        editor_renderer.render_cursor(cursor, editor_buffer, cursor.visible)
 
         pg.display.flip()
 

@@ -1,7 +1,10 @@
 class Cursor:
-    def __init__(self, line=0, col=0):
+    def __init__(self, line=0, col=0, blink_timer=0, visible=True, blink_rate=500):
         self.line = line
         self.col = col
+        self.blink_timer = blink_timer
+        self.blink_rate = blink_rate #miliseconds
+        self.visible = True
 
     def move_right(self, buffer_obj):
         current_line_len = len(buffer_obj.get_line(self.line))
@@ -32,3 +35,4 @@ class Cursor:
         self.line = max(0, min(line, buffer_obj.get_line_count() -1))
         # Ensure col is within the bounds of the new line
         self.col = max(0, min(col, len(buffer_obj.get_line(self.line) or "")))
+
