@@ -28,24 +28,27 @@ class EditorRenderer:
         self.line_number_width = 0
         self.gutter_padding = 5            
 
+      
     def _calculate_visible_lines(self, screen_height):
         """Calculate how many lines fit in the main text area."""
-        text_area_height = screen_height - (2 * self.padding_y)
-        # If status bar, subtract its height too
-        if hasattr(self, 'status_text_renderer'):
-            status_bar_h = self.status_text_renderer.line_height + self.padding_y
-            text_area_height -= status_bar_h
+        available_height = screen_height
+        available_height -= (2 * self.padding_y)
+
+        if hasattr(self, 'status_text_renderer') and self.status_text_renderer:
+            available_height -= self.status_text_renderer.line_height
         
         if self.line_height > 0:
-            self.visible_lines_in_viewport = max(1, int(text_area_height / self.line_height))
+            self.visible_lines_in_viewport = max(1, int(available_height / self.line_height))
         else:
-            self.visible_lines_in_viewport = 25 # Fallback
+            self.visible_lines_in_viewport = 25
+
+
 
     def _calculate_line_number_width(self, buffer_obj):
         """Calculates the width needed for the line number gutter."""
         max_line_num = buffer_obj.get_line_count()
         if max_line_num == 0:
-            return self.text_renderer.get_string_width("1") # Min width for at least "1"
+            return self.text_renderer.get_string_width("1") + self.gutter_padding # Min width for at least "1"
         
         return self.line_num_renderer.get_string_width(str(max_line_num)) + self.gutter_padding
 
@@ -120,6 +123,11 @@ class EditorRenderer:
         line_num = cursor_obj.line
         col_num = cursor_obj.col
 
+        cursor_display_line_index = line_num - editor_state.viewport_start_line
+        
+        if not (0 <= cursor_display_line_index < self.visible_lines_in_viewport):
+            return
+
         current_line_text = buffer_obj.get_line(line_num)
         if current_line_text is None: return
 
@@ -127,7 +135,7 @@ class EditorRenderer:
         
         cursor_x_offset = text_area_start_x + self.text_renderer.get_string_width(text_before_cursor)
         
-        cursor_y_offset = self.padding_y + (line_num * self.line_height)
+        cursor_y_offset = self.padding_y + (cursor_display_line_index * self.line_height)
 
         glColor4ub(self.cursor_color[0], self.cursor_color[1], self.cursor_color[2], self.cursor_color[3])
         glDisable(GL_TEXTURE_2D)

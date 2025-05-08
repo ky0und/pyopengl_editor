@@ -54,6 +54,8 @@ def main():
             if event.type == pg.KEYDOWN:
                 action_taken = False
 
+                cursor_line_before_move = cursor.line
+
                 # --- Mode Independent Keys ---
                 if event.key == pg.K_ESCAPE:
                     if editor_state.mode == EditorMode.INSERT:
@@ -100,16 +102,22 @@ def main():
                                 if cursor.col >= len(editor_buffer.get_line(cursor.line)) and cursor.col > 0 :
                                     cursor.col -=1
                                 action_taken = True
-                        elif event.key == pg.K_h:
+                        elif event.key == pg.K_h: # 'h' - move cursor left
                             cursor.move_left(editor_buffer, mode_is_normal=True)
                             action_taken = True
-                        elif event.key == pg.K_j:
+                        elif event.key == pg.K_j: # 'j' - move cursor down
+                            if cursor.line == editor_state.viewport_start_line + editor_renderer.visible_lines_in_viewport - 1 and \
+                               cursor.line < editor_buffer.get_line_count() - 1:
+                                editor_state.viewport_start_line += 1
                             cursor.move_down(editor_buffer)
                             action_taken = True
-                        elif event.key == pg.K_k:
+                        elif event.key == pg.K_k: # 'k' - move cursor up
+                            if cursor.line == editor_state.viewport_start_line and \
+                               cursor.line > 0:
+                                editor_state.viewport_start_line -= 1
                             cursor.move_up(editor_buffer)
                             action_taken = True
-                        elif event.key == pg.K_l:
+                        elif event.key == pg.K_l: # 'l' - move cursor right
                             cursor.move_right(editor_buffer, mode_is_normal=True)
                             action_taken = True
                         # TODO Add other normal mode commands here (x, dd, yy, p etc.)
@@ -144,9 +152,15 @@ def main():
                             cursor.move_right(editor_buffer, mode_is_normal=False)
                             action_taken = True
                         elif event.key == pg.K_UP:
+                            if cursor.line == editor_state.viewport_start_line and \
+                               cursor.line > 0:
+                                editor_state.viewport_start_line -= 1
                             cursor.move_up(editor_buffer)
                             action_taken = True
                         elif event.key == pg.K_DOWN:
+                            if cursor.line == editor_state.viewport_start_line + editor_renderer.visible_lines_in_viewport - 1 and \
+                               cursor.line < editor_buffer.get_line_count() - 1:
+                                editor_state.viewport_start_line += 1
                             cursor.move_down(editor_buffer)
                             action_taken = True
                         elif event.unicode:
@@ -177,12 +191,24 @@ def main():
         else: # Buffer is empty
              editor_state.viewport_start_line = 0
 
+        # Fix cursor if went out of frame for some reason
+        if cursor.line < editor_state.viewport_start_line:
+            editor_state.viewport_start_line = cursor.line
+        elif cursor.line >= editor_state.viewport_start_line + editor_renderer.visible_lines_in_viewport:
+            new_start = cursor.line - editor_renderer.visible_lines_in_viewport + 1
+            editor_state.viewport_start_line = max(0, new_start)
+
+        # Re-clamp after the general scroll-to-view adjustment
+        if editor_buffer.get_line_count() > 0:
+                max_possible_start_line = max(0, editor_buffer.get_line_count() - editor_renderer.visible_lines_in_viewport)
+                editor_state.viewport_start_line = max(0, min(editor_state.viewport_start_line, max_possible_start_line))
+        else:
+                editor_state.viewport_start_line = 0
+
         cursor.blink_timer += dt
         if cursor.blink_timer >= cursor.blink_rate:
             cursor.blink_timer = 0
             cursor.visible = not cursor.visible
-
-
 
         glClear(GL_COLOR_BUFFER_BIT)
         editor_renderer.render_buffer(editor_buffer, editor_state, SCREEN_HEIGHT)
