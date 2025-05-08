@@ -40,6 +40,8 @@ def main():
     cursor = Cursor()
     editor_state = EditorState()
 
+    editor_renderer._calculate_visible_lines(SCREEN_HEIGHT)
+
     running = True
     while running:
         dt = clock.tick(FPS)
@@ -62,7 +64,7 @@ def main():
                         action_taken = True
 
 
-                # --- NORMAL MODE ---
+                # --- NORMAL MODE --- (following https://vim.rtorr.com/)
                 if editor_state.mode == EditorMode.NORMAL:
                     if not action_taken:
                         if event.key == pg.K_i: # Insert mode (before cursor)
@@ -74,7 +76,30 @@ def main():
                                 cursor.col += 1
                             editor_state.switch_to_mode(EditorMode.INSERT)
                             action_taken = True
-                        # TODO Add 'o' and 'O' commands that relate to https://vim.rtorr.com/
+                        elif event.key == pg.K_o:
+                            if pg.key.get_mods() & pg.KMOD_SHIFT: # 'O' - Open line above
+                                editor_renderer.handle_lines_inserted(insert_idx=cursor.line, num_inserted_lines=1)
+                                editor_buffer.lines.insert(cursor.line, "")
+                                cursor.col = 0
+                                editor_state.switch_to_mode(EditorMode.INSERT)
+                                action_taken = True
+                            else: # 'o' - Open line below
+                                editor_renderer.handle_lines_inserted(insert_idx=cursor.line + 1, num_inserted_lines=1)
+                                editor_buffer.lines.insert(cursor.line + 1, "")
+                                cursor.line += 1
+                                cursor.col = 0
+                                editor_state.switch_to_mode(EditorMode.INSERT)
+                                action_taken = True
+                        elif event.key == pg.K_x: # 'x' - delete character under cursor
+                            current_line_text = editor_buffer.get_line(cursor.line)
+                            if current_line_text is not None and cursor.col < len(current_line_text):
+                                editor_renderer.invalidate_line_cache(cursor.line)
+                                editor_buffer.delete_char_at_cursor(cursor.line, cursor.col)
+                                # Cursor position remains, unless it was on the last char of the line
+                                # Vim's 'x' on last char moves cursor left if possible
+                                if cursor.col >= len(editor_buffer.get_line(cursor.line)) and cursor.col > 0 :
+                                    cursor.col -=1
+                                action_taken = True
                         elif event.key == pg.K_h:
                             cursor.move_left(editor_buffer, mode_is_normal=True)
                             action_taken = True
@@ -89,7 +114,7 @@ def main():
                             action_taken = True
                         # TODO Add other normal mode commands here (x, dd, yy, p etc.)
 
-                # --- INSERT MODE ---
+                # --- INSERT MODE --- (following https://vim.rtorr.com/)
                 elif editor_state.mode == EditorMode.INSERT:
                     if not action_taken:
                         if event.key == pg.K_RETURN:
@@ -139,15 +164,29 @@ def main():
                 if action_taken:
                     cursor.visible = True
                     cursor.blink_timer = 0
-                    
+
+        if cursor.line < editor_state.viewport_start_line:
+            editor_state.viewport_start_line = cursor.line
+        elif cursor.line >= editor_state.viewport_start_line + editor_renderer.visible_lines_in_viewport:
+            editor_state.viewport_start_line = cursor.line - editor_renderer.visible_lines_in_viewport + 1
+        
+        # Clamp viewport_start_line to be valid
+        if editor_buffer.get_line_count() > 0:
+             max_start_line = max(0, editor_buffer.get_line_count() - editor_renderer.visible_lines_in_viewport)
+             editor_state.viewport_start_line = max(0, min(editor_state.viewport_start_line, max_start_line))
+        else: # Buffer is empty
+             editor_state.viewport_start_line = 0
+
         cursor.blink_timer += dt
         if cursor.blink_timer >= cursor.blink_rate:
             cursor.blink_timer = 0
             cursor.visible = not cursor.visible
 
+
+
         glClear(GL_COLOR_BUFFER_BIT)
-        editor_renderer.render_buffer(editor_buffer)
-        editor_renderer.render_cursor(cursor, editor_buffer, cursor.visible)
+        editor_renderer.render_buffer(editor_buffer, editor_state, SCREEN_HEIGHT)
+        editor_renderer.render_cursor(cursor, editor_buffer, editor_state, cursor.visible)
         editor_renderer.render_status_bar(editor_state, SCREEN_WIDTH, SCREEN_HEIGHT)
 
         pg.display.flip()

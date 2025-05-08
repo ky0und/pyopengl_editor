@@ -19,6 +19,7 @@ class Buffer:
             self.lines[line_num] = line[:col] + char + line[col:]
 
     def delete_char(self, line_num, col):
+        """Deletes the character before (line_num, col)"""
         if 0 <= line_num < len(self.lines):
             line = self.lines[line_num]
             if col > 0 and len(line) > 0:
@@ -30,6 +31,14 @@ class Buffer:
                 return True # Line merged
         return False
 
+    def delete_char_at_cursor(self, line_num, col):
+        """Deletes the character at (line_num, col), not before it."""
+        if 0 <= line_num < len(self.lines):
+            line = self.lines[line_num]
+            if 0 <= col < len(line):
+                self.lines[line_num] = line[:col] + line[col+1:]
+                return True # Deletion occurred
+        return False
 
     def split_line(self, line_num, col):
         if 0 <= line_num < len(self.lines):

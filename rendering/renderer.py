@@ -5,6 +5,7 @@ class EditorRenderer:
     def __init__(self, font_path, font_size):
         self.text_renderer = TextRenderer(font_path, font_size, color=(220, 220, 220))
         self.line_height = self.text_renderer.line_height
+        self.visible_lines_in_viewport = 0
         self.padding_x = 5
         self.padding_y = 5
         # Key: line_index, Value: (texture_id, actual_text_width, texture_height, text_content_str)
@@ -12,18 +13,70 @@ class EditorRenderer:
         self.cursor_color = (240, 240, 240, 255)
         self.cursor_width = 2
         status_font_size = max(12, int(font_size * 0.8))
+
         try:
             self.status_text_renderer = TextRenderer(font_path, status_font_size, color=(180, 180, 180))
         except Exception as e:
             print(f"Could not create status_text_renderer: {e}, falling back.")
             self.status_text_renderer = self.text_renderer
 
-    def render_buffer(self, buffer_obj):
-        current_y = self.padding_y
+        try:
+            self.line_num_renderer = TextRenderer(font_path, font_size, color=(100, 100, 120))
+        except Exception:
+            self.line_num_renderer = self.text_renderer
 
-        for i in range(buffer_obj.get_line_count()):
+        self.line_number_width = 0
+        self.gutter_padding = 5            
+
+    def _calculate_visible_lines(self, screen_height):
+        """Calculate how many lines fit in the main text area."""
+        text_area_height = screen_height - (2 * self.padding_y)
+        # If status bar, subtract its height too
+        if hasattr(self, 'status_text_renderer'):
+            status_bar_h = self.status_text_renderer.line_height + self.padding_y
+            text_area_height -= status_bar_h
+        
+        if self.line_height > 0:
+            self.visible_lines_in_viewport = max(1, int(text_area_height / self.line_height))
+        else:
+            self.visible_lines_in_viewport = 25 # Fallback
+
+    def _calculate_line_number_width(self, buffer_obj):
+        """Calculates the width needed for the line number gutter."""
+        max_line_num = buffer_obj.get_line_count()
+        if max_line_num == 0:
+            return self.text_renderer.get_string_width("1") # Min width for at least "1"
+        
+        return self.line_num_renderer.get_string_width(str(max_line_num)) + self.gutter_padding
+
+    def render_buffer(self, buffer_obj, editor_state, screen_height_param):
+        if self.visible_lines_in_viewport == 0:
+             self._calculate_visible_lines(screen_height_param)
+
+        current_y = self.padding_y
+        self.line_number_width = self._calculate_line_number_width(buffer_obj)  
+        text_area_start_x = self.padding_x + self.line_number_width
+
+        # Determine the range of lines to render based on viewport
+        start_render_line = editor_state.viewport_start_line
+        end_render_line = min(buffer_obj.get_line_count(), 
+                              start_render_line + self.visible_lines_in_viewport)
+
+        for i in range(start_render_line, end_render_line):
+            display_line_index = i - start_render_line
+
+            line_num_str = str(i + 1) # Line numbers are 1-indexed for display
+            ln_tex_id, ln_w, ln_h = self.line_num_renderer.render_text_to_texture(line_num_str)
+
+            ln_y_pos = self.padding_y + (display_line_index * self.line_height)
+            ln_tex_id, ln_w, ln_h = self.line_num_renderer.render_text_to_texture(line_num_str)
+
+            if ln_tex_id:
+                ln_x_pos = self.padding_x + (self.line_number_width - self.gutter_padding - ln_w)
+                self.line_num_renderer.draw_text(ln_tex_id, ln_x_pos, current_y, ln_w, ln_h)
+                self.line_num_renderer.cleanup_texture(ln_tex_id)
+
             line_text = buffer_obj.get_line(i)
-            
             cached_entry = self.line_texture_cache.get(i)
             texture_id, tex_w, tex_h = None, 0, self.line_height 
 
@@ -40,7 +93,7 @@ class EditorRenderer:
                 tex_h = tex_h_rendered
 
             if texture_id is not None: # tex_w can be 0 for empty lines
-                 self.text_renderer.draw_text(texture_id, self.padding_x, current_y, tex_w, tex_h)
+                 self.text_renderer.draw_text(texture_id, text_area_start_x, current_y, tex_w, tex_h)
             
             current_y += self.line_height
 
@@ -51,9 +104,18 @@ class EditorRenderer:
             self._cleanup_cached_texture(k)
 
 
-    def render_cursor(self, cursor_obj, buffer_obj, is_visible=True):
+    def render_cursor(self, cursor_obj, buffer_obj, editor_state, is_visible=True):
         if not is_visible:
             return
+        
+        # Cursor position relative to viewport
+        cursor_display_line = cursor_obj.line - editor_state.viewport_start_line
+
+        # Only render cursor if it's within the visible part of the viewport
+        if not (0 <= cursor_display_line < self.visible_lines_in_viewport):
+            return
+
+        text_area_start_x = self.padding_x + self.line_number_width 
 
         line_num = cursor_obj.line
         col_num = cursor_obj.col
@@ -63,7 +125,7 @@ class EditorRenderer:
 
         text_before_cursor = current_line_text[:col_num]
         
-        cursor_x_offset = self.padding_x + self.text_renderer.get_string_width(text_before_cursor)
+        cursor_x_offset = text_area_start_x + self.text_renderer.get_string_width(text_before_cursor)
         
         cursor_y_offset = self.padding_y + (line_num * self.line_height)
 
