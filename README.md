@@ -1,2 +1,42 @@
 # pyopengl_editor
 A programming editor made with pyOpenGL
+
+
+### TODO
+
+- [x] Getting Text on Screen
+  - [x] Window Setup  
+  - [x] Font Loading & Basic Text Rendering  
+  - [x] Basic Buffer  
+  - [x] Simplest Input  
+  - [x] Basic Cursor 
+- [ ] Core Editing & Modes
+  - [x] Implement Modes  
+  - [x] Keyboard Handler per Mode 
+      - [ ] Abstract the input system to input_handling/keyboard_handler.py
+  - [x] Cursor Movement Logic 
+  - [ ] File Operations  
+  - [x] Viewport & Basic Scrolling  
+- [ ] Vim-like Operations
+  - [ ] Operators  
+  - [ ] Undo/Redo 
+  - [ ] Yank & Put  
+  - [ ] More Normal Mode Movements
+- [ ] Visual Mode & Mouse Support
+  - [ ] Visual Mode
+      - [ ] Enter Visual mode (v)
+      - [ ] Track selection start and end points (line, col)
+      - [ ] Highlight selected text (rendering/renderer.py)
+      - [ ] Apply operators (d, y) to the selection
+  - [ ] Mouse Input 
+      - [ ] Click to position cursor: Convert screen coordinates to (line, col)
+      - [ ] Drag to select text: Update visual selection   
+      - [ ] Scroll wheel for viewport scrolling
+- [ ] Polish & Advanced Features
+  - [x] Status Bar  
+  - [ ] Command Line UI
+  - [ ] Basic Syntax Highlighting
+  - [ ] Search 
+  - [ ] Text Rendering Optimizations 
+  - [ ] Configuration Files 
+
