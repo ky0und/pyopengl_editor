@@ -11,8 +11,14 @@ class EditorRenderer:
         self.line_texture_cache = {}
         self.cursor_color = (240, 240, 240, 255)
         self.cursor_width = 2
+        status_font_size = max(12, int(font_size * 0.8))
+        try:
+            self.status_text_renderer = TextRenderer(font_path, status_font_size, color=(180, 180, 180))
+        except Exception as e:
+            print(f"Could not create status_text_renderer: {e}, falling back.")
+            self.status_text_renderer = self.text_renderer
 
-    def render_buffer(self, buffer_obj): # Viewport params removed for now for simplicity
+    def render_buffer(self, buffer_obj):
         current_y = self.padding_y
 
         for i in range(buffer_obj.get_line_count()):
@@ -69,6 +75,23 @@ class EditorRenderer:
         glVertex2f(cursor_x_offset + self.cursor_width, cursor_y_offset + self.line_height) # Bottom-right
         glVertex2f(cursor_x_offset, cursor_y_offset + self.line_height)               # Bottom-left
         glEnd()
+
+    def render_status_bar(self, editor_state, screen_width, screen_height):
+        """Renders the status bar on the bottom left of the screen."""
+        if not hasattr(self, 'status_text_renderer'):
+            return
+
+        mode_name = f"-- {editor_state.mode.name} --"
+        
+        texture_id, tex_w, tex_h = \
+            self.status_text_renderer.render_text_to_texture(mode_name)
+
+        if texture_id:
+            x_pos = self.padding_x 
+            y_pos = screen_height - tex_h - self.padding_y 
+
+            self.status_text_renderer.draw_text(texture_id, x_pos, y_pos, tex_w, tex_h)
+            self.status_text_renderer.cleanup_texture(texture_id)
 
     def _cleanup_cached_texture(self, line_num):
         """Helper to remove and cleanup a single cached texture by line number."""
