@@ -136,7 +136,7 @@ class KeyboardHandler:
             if event.unicode.isprintable() or event.unicode == '\t':
                 self.renderer.invalidate_line_cache(self.cursor.line)
                 if event.unicode == '\t':
-                     for _ in range(4): # Simple tab to 4 spaces
+                     for _ in range(2): # Simple tab to 2 spaces
                          self.buffer.insert_char(self.cursor.line, self.cursor.col, ' ')
                          self.cursor.col += 1
                 else:
