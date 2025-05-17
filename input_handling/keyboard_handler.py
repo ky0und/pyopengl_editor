@@ -14,6 +14,13 @@ class KeyboardHandler:
         self.cursor = cursor
         self.renderer = editor_renderer
 
+    def _reset_buffer_state_for_new_load(self):
+        """Resets cursor and tells renderer to clear all line caches."""
+        self.cursor.line = 0
+        self.cursor.col = 0
+        self.state.viewport_start_line = 0
+        self.renderer.invalidate_all_cache()
+
     def handle_keydown(self, event):
         """
         Processes a Pygame KEYDOWN event based on the current editor mode.
@@ -42,6 +49,45 @@ class KeyboardHandler:
     # Following https://vim.rtorr.com/
     def _handle_normal_mode(self, event):
         action_taken = False
+        mods = pg.key.get_mods()
+
+        # --- File Operations (Ctrl+Key) ---
+        if mods & pg.KMOD_CTRL:
+            if event.key == pg.K_o: # Ctrl + O: Open File
+                try:
+                    filepath_to_open = input("Enter filepath to open: ")
+                    if filepath_to_open:
+                        self._reset_buffer_state_for_new_load()
+                        self.buffer.load_from_file(filepath_to_open.strip())
+                        action_taken = True
+                except Exception as e:
+                    print(f"Error during file open prompt: {e}")
+                return True # Consume Ctrl+O event
+
+            elif event.key == pg.K_s: 
+                if mods & pg.KMOD_SHIFT: # Ctrl + S or Ctrl + Shift + S: Save As
+                    try:
+                        filepath_to_save = input(f"Save As (current: {self.buffer.filepath or 'Unsaved'}): ")
+                        if filepath_to_save:
+                            self.buffer.save_to_file(filepath_to_save.strip())
+                            action_taken = True
+                    except Exception as e:
+                        print(f"Error during Save As prompt: {e}")
+                else: # Ctrl + S or Ctrl + Shift + S: Save As
+                    if self.buffer.filepath:
+                        self.buffer.save_to_file()
+                        action_taken = True
+                    else:
+                        try:
+                            filepath_to_save = input("Save As (new file): ")
+                            if filepath_to_save:
+                                self.buffer.save_to_file(filepath_to_save.strip())
+                                action_taken = True
+                        except Exception as e:
+                            print(f"Error during Save prompt: {e}")
+                return True # Consume Ctrl+S event
+
+        # --- Regular Normal Mode Commands (if not a Ctrl command) ---
         if event.key == pg.K_i: # Insert mode (before cursor)
             self.state.switch_to_mode(EditorMode.INSERT)
             action_taken = True
@@ -102,17 +148,20 @@ class KeyboardHandler:
             self.cursor.col = 0
             action_taken = True
         elif event.key == pg.K_BACKSPACE:
-            if self.cursor.col > 0:
-                self.renderer.invalidate_line_cache(self.cursor.line)
-                self.buffer.delete_char(self.cursor.line, self.cursor.col)
-                self.cursor.col -= 1
-            elif self.cursor.line > 0:
-                self.renderer.invalidate_line_cache(self.cursor.line - 1)
-                self.renderer.handle_lines_deleted(delete_idx=self.cursor.line, num_deleted_lines=1)
-                prev_line_len = len(self.buffer.get_line(self.cursor.line - 1))
-                self.buffer.delete_char(self.cursor.line, 0)
-                self.cursor.line -= 1
-                self.cursor.col = prev_line_len
+            prev_cursor_line = self.cursor.line
+            
+            is_merge = (self.cursor.col == 0 and self.cursor.line > 0)
+
+            if self.buffer.delete_char(self.cursor.line, self.cursor.col):
+                if is_merge:
+                    self.renderer.invalidate_line_cache(prev_cursor_line - 1)
+                    self.renderer.handle_lines_deleted(delete_idx=prev_cursor_line, num_deleted_lines=1)
+                    self.cursor.line -=1
+                    self.cursor.col = len(self.buffer.get_line(self.cursor.line) or "")
+                else:
+                    self.renderer.invalidate_line_cache(self.cursor.line)
+                    self.cursor.col -=1
+                action_taken = True
             action_taken = True
         elif event.key == pg.K_LEFT:
             self.cursor.move_left(self.buffer, mode_is_normal=False)

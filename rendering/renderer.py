@@ -146,15 +146,21 @@ class EditorRenderer:
         glVertex2f(cursor_x_offset, cursor_y_offset + self.line_height)               # Bottom-left
         glEnd()
 
-    def render_status_bar(self, editor_state, screen_width, screen_height):
+    def render_status_bar(self, editor_state, editor_buffer, screen_width, screen_height):
         """Renders the status bar on the bottom left of the screen."""
         if not hasattr(self, 'status_text_renderer'):
             return
 
         mode_name = f"-- {editor_state.mode.name} --"
-        
+
+        filepath_display = editor_buffer.filepath if editor_buffer.filepath else "[No Name]"
+        dirty_indicator = " [+]" if editor_buffer.dirty else ""
+        # cursor_pos_str = f"Ln {cursor_obj.line+1}, Col {cursor_obj.col+1}"
+
+        status_text = f"{mode_name}  {filepath_display}{dirty_indicator}"
+
         texture_id, tex_w, tex_h = \
-            self.status_text_renderer.render_text_to_texture(mode_name)
+            self.status_text_renderer.render_text_to_texture(status_text)
 
         if texture_id:
             x_pos = self.padding_x 

@@ -100,7 +100,7 @@ def main():
         glClear(GL_COLOR_BUFFER_BIT)
         editor_renderer.render_buffer(editor_buffer, editor_state, SCREEN_HEIGHT)
         editor_renderer.render_cursor(cursor, editor_buffer, editor_state, cursor.visible)
-        editor_renderer.render_status_bar(editor_state, SCREEN_WIDTH, SCREEN_HEIGHT)
+        editor_renderer.render_status_bar(editor_state, editor_buffer, SCREEN_WIDTH, SCREEN_HEIGHT)
 
         pg.display.flip()
 
