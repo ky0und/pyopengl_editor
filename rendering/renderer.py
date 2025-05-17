@@ -1,5 +1,6 @@
 from .text_renderer import TextRenderer
 from OpenGL.GL import *
+from editor.modes import EditorMode
 
 class EditorRenderer:
     def __init__(self, font_path, font_size):
@@ -146,8 +147,51 @@ class EditorRenderer:
         glVertex2f(cursor_x_offset, cursor_y_offset + self.line_height)               # Bottom-left
         glEnd()
 
+    def render_command_line(self, editor_state, screen_width, screen_height):
+        if editor_state.mode != EditorMode.COMMAND and not editor_state.command_buffer:
+            # If not in command mode and no persistent message, render normal status bar
+            # This assumes editor_buffer is passed if your status bar needs it
+            # self.render_status_bar(editor_state, editor_buffer, screen_width, screen_height)
+            return 
+
+        cmd_renderer = self.status_text_renderer 
+        
+        text_to_render = editor_state.command_buffer
+        
+        texture_id, tex_w, tex_h = cmd_renderer.render_text_to_texture(text_to_render)
+
+        if texture_id:
+            x_pos = self.padding_x
+
+            y_pos = screen_height - tex_h - self.padding_y 
+            
+            # glColor4f(0.1, 0.1, 0.1, 1.0)
+            # glRectf(0, y_pos - self.padding_y, screen_width, screen_height)
+
+            cmd_renderer.draw_text(texture_id, x_pos, y_pos, tex_w, tex_h)
+            cmd_renderer.cleanup_texture(texture_id)
+
+            if editor_state.mode == EditorMode.COMMAND:
+                text_before_cmd_cursor = editor_state.command_buffer[:editor_state.command_cursor_pos]
+                cursor_x_cmd = x_pos + cmd_renderer.get_string_width(text_before_cmd_cursor)
+                
+                cmd_cursor_height = cmd_renderer.line_height 
+
+                glColor4ub(self.cursor_color[0], self.cursor_color[1], self.cursor_color[2], self.cursor_color[3])
+                glDisable(GL_TEXTURE_2D)
+                glBegin(GL_QUADS)
+                glVertex2f(cursor_x_cmd, y_pos)
+                glVertex2f(cursor_x_cmd + self.cursor_width, y_pos)
+                glVertex2f(cursor_x_cmd + self.cursor_width, y_pos + cmd_cursor_height)
+                glVertex2f(cursor_x_cmd, y_pos + cmd_cursor_height)
+                glEnd()
+
     def render_status_bar(self, editor_state, editor_buffer, screen_width, screen_height):
         """Renders the status bar on the bottom left of the screen."""
+        if editor_state.mode == EditorMode.COMMAND:
+            self.render_command_line(editor_state, screen_width, screen_height)
+            return # Early return, so command bar takes precedence
+
         if not hasattr(self, 'status_text_renderer'):
             return
 

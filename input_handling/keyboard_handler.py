@@ -28,6 +28,11 @@ class KeyboardHandler:
         """
         action_taken = False
 
+        # --- Handle COMMAND mode input first if active ---
+        if self.state.mode == EditorMode.COMMAND:
+            action_taken = self._handle_command_mode(event)
+            return action_taken
+
         # --- Global Mode-Independent Keys ---
         if event.key == pg.K_ESCAPE:
             if self.state.mode == EditorMode.INSERT:
@@ -51,41 +56,10 @@ class KeyboardHandler:
         action_taken = False
         mods = pg.key.get_mods()
 
-        # --- File Operations (Ctrl+Key) ---
-        if mods & pg.KMOD_CTRL:
-            if event.key == pg.K_o: # Ctrl + O: Open File
-                try:
-                    filepath_to_open = input("Enter filepath to open: ")
-                    if filepath_to_open:
-                        self._reset_buffer_state_for_new_load()
-                        self.buffer.load_from_file(filepath_to_open.strip())
-                        action_taken = True
-                except Exception as e:
-                    print(f"Error during file open prompt: {e}")
-                return True # Consume Ctrl+O event
-
-            elif event.key == pg.K_s: 
-                if mods & pg.KMOD_SHIFT: # Ctrl + S or Ctrl + Shift + S: Save As
-                    try:
-                        filepath_to_save = input(f"Save As (current: {self.buffer.filepath or 'Unsaved'}): ")
-                        if filepath_to_save:
-                            self.buffer.save_to_file(filepath_to_save.strip())
-                            action_taken = True
-                    except Exception as e:
-                        print(f"Error during Save As prompt: {e}")
-                else: # Ctrl + S or Ctrl + Shift + S: Save As
-                    if self.buffer.filepath:
-                        self.buffer.save_to_file()
-                        action_taken = True
-                    else:
-                        try:
-                            filepath_to_save = input("Save As (new file): ")
-                            if filepath_to_save:
-                                self.buffer.save_to_file(filepath_to_save.strip())
-                                action_taken = True
-                        except Exception as e:
-                            print(f"Error during Save prompt: {e}")
-                return True # Consume Ctrl+S event
+        if event.key == pg.K_SEMICOLON and (mods & pg.KMOD_SHIFT): # ':' key
+            self.state.switch_to_mode(EditorMode.COMMAND)
+            action_taken = True
+            return action_taken # Exclusive for entering command mode
 
         # --- Regular Normal Mode Commands (if not a Ctrl command) ---
         if event.key == pg.K_i: # Insert mode (before cursor)
@@ -193,3 +167,115 @@ class KeyboardHandler:
                     self.cursor.col += 1
                 action_taken = True
         return action_taken
+    
+    def _handle_command_mode(self, event):
+        action_taken = True
+
+        if event.key == pg.K_ESCAPE: # 'ESC' - Return to previous mode
+            self.state.switch_to_mode(self.state.previous_mode)
+        elif event.key == pg.K_RETURN:
+            self._execute_command(self.state.command_buffer)
+            # Execute might switch mode (e.g. :q) or stay (e.g. bad command)
+            # If not quitting, return to previous mode.
+            if self.state.mode == EditorMode.COMMAND:
+                 self.state.switch_to_mode(self.state.previous_mode)
+        elif event.key == pg.K_BACKSPACE:
+            if self.state.command_cursor_pos > 0: # If cursor is after ':', and buffer is just ':', clear and exit. (e.g. 'how do i exit vim' shouldn't be a problem here)
+                if self.state.command_cursor_pos == 1 and self.state.command_buffer == ":":
+                    self.state.switch_to_mode(self.state.previous_mode)
+                    return True
+
+                self.state.command_buffer = \
+                    self.state.command_buffer[:self.state.command_cursor_pos - 1] + \
+                    self.state.command_buffer[self.state.command_cursor_pos:]
+                self.state.command_cursor_pos -= 1
+        elif event.key == pg.K_LEFT:
+            if self.state.command_cursor_pos > 1: # Don't move cursor before ':'
+                self.state.command_cursor_pos -= 1
+        elif event.key == pg.K_RIGHT:
+            if self.state.command_cursor_pos < len(self.state.command_buffer):
+                self.state.command_cursor_pos += 1
+        elif event.unicode:
+            # Ensure cursor isn't trying to type before initial ':' if somehow moved there
+            if self.state.command_cursor_pos == 0 and self.state.command_buffer == "":
+                self.state.command_buffer = ":"
+                self.state.command_cursor_pos = 1
+
+            if event.unicode.isprintable():
+                self.state.command_buffer = \
+                    self.state.command_buffer[:self.state.command_cursor_pos] + \
+                    event.unicode + \
+                    self.state.command_buffer[self.state.command_cursor_pos:]
+                self.state.command_cursor_pos += 1
+        else:
+            action_taken = False # Not a recognized key for command input
+            
+        return action_taken
+
+    def _execute_command(self, command_str):
+        print(f"Executing command: {command_str}")
+        if not command_str.startswith(":"):
+            self.state.command_buffer = f"Error: Not a valid command: {command_str}"
+            self.state.switch_to_mode(EditorMode.COMMAND, preserve_command_state=True)
+            return
+
+        parts = command_str[1:].strip().split()
+        if not parts:
+            # Empty command (e.g., just ":") - do nothing, return to normal
+            self.state.switch_to_mode(self.state.previous_mode)
+            return
+
+        cmd = parts[0]
+        args = parts[1:]
+
+        if cmd == 'q':
+            if self.buffer.dirty:
+                # In real Vim, this errors out
+                # TODO, make this error out
+                self.state.command_buffer = "Error: Unsaved changes! (use :q! to override)"
+                self.state.switch_to_mode(EditorMode.COMMAND, preserve_command_state=True)
+            else:
+                pg.event.post(pg.event.Event(pg.QUIT))
+        elif cmd == 'q!':
+            pg.event.post(pg.event.Event(pg.QUIT))
+        elif cmd == 'w':
+            filepath = args[0] if args else self.buffer.filepath
+            if filepath:
+                self.buffer.save_to_file(filepath)
+                self.state.switch_to_mode(self.state.previous_mode)
+            elif self.buffer.filepath: # No arg, but has a current path
+                self.buffer.save_to_file()
+                self.state.switch_to_mode(self.state.previous_mode)
+            else:
+                self.state.command_buffer = "Error: No filename given for :w"
+                self.state.switch_to_mode(EditorMode.COMMAND, preserve_command_state=True)
+        elif cmd == 'wq':
+            # Save then quit
+            saved_successfully = False
+            if self.buffer.filepath:
+                saved_successfully = self.buffer.save_to_file()
+            elif args: # :wq filename
+                saved_successfully = self.buffer.save_to_file(args[0])
+            else: # :wq with no current name and no arg
+                 self.state.command_buffer = "Error: No filename for :wq"
+                 self.state.switch_to_mode(EditorMode.COMMAND, preserve_command_state=True)
+                 return
+            
+            if saved_successfully or not self.buffer.dirty: # Quit if saved or wasn't dirty
+                pg.event.post(pg.event.Event(pg.QUIT))
+            else: # Save failed, show error
+                self.state.command_buffer = "Error: Save failed during :wq"
+                self.state.switch_to_mode(EditorMode.COMMAND, preserve_command_state=True)
+
+        elif cmd == 'e':
+            if args:
+                filepath_to_open = args[0]
+                self._reset_buffer_state_for_new_load()
+                self.buffer.load_from_file(filepath_to_open)
+                self.state.switch_to_mode(self.state.previous_mode) # Return to normal after loading
+            else:
+                self.state.command_buffer = "Error: No filename given for :e"
+                self.state.switch_to_mode(EditorMode.COMMAND, preserve_command_state=True)
+        else:
+            self.state.command_buffer = f"Error: Unknown command: {cmd}"
+            self.state.switch_to_mode(EditorMode.COMMAND, preserve_command_state=True)

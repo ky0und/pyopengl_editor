@@ -58,13 +58,9 @@ def main():
 
                 action_taken_by_handler = keyboard_handler.handle_keydown(event)
 
-                if action_taken_by_handler:
+                if action_taken_by_handler & (editor_state.mode != EditorMode.COMMAND):
                     cursor.visible = True
                     cursor.blink_timer = 0
-
-                if event.key == pg.K_ESCAPE and not action_taken_by_handler and editor_state.mode == EditorMode.NORMAL:
-                    # If in normal mode and Esc is pressed, quit.
-                    pass
                 
         if cursor.line < editor_state.viewport_start_line:
             editor_state.viewport_start_line = cursor.line
