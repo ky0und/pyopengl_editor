@@ -194,6 +194,10 @@ class EditorRenderer:
 
         if not hasattr(self, 'status_text_renderer'):
             return
+        
+        status_prefix = ""
+        if editor_state.mode == EditorMode.OPERATOR_PENDING:
+            status_prefix = f"({editor_state.active_operator.name[0].lower()}) "
 
         mode_name = f"-- {editor_state.mode.name} --"
 
@@ -201,7 +205,7 @@ class EditorRenderer:
         dirty_indicator = " [+]" if editor_buffer.dirty else ""
         # cursor_pos_str = f"Ln {cursor_obj.line+1}, Col {cursor_obj.col+1}"
 
-        status_text = f"{mode_name}  {filepath_display}{dirty_indicator}"
+        status_text = f"{status_prefix}{mode_name}  {filepath_display}{dirty_indicator}"
 
         texture_id, tex_w, tex_h = \
             self.status_text_renderer.render_text_to_texture(status_text)
