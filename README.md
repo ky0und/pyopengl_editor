@@ -10,12 +10,12 @@ A programming editor made with pyOpenGL
   - [x] Basic Buffer  
   - [x] Simplest Input  
   - [x] Basic Cursor 
-- [ ] Core Editing & Modes
+- [x] Core Editing & Modes
   - [x] Implement Modes  
   - [x] Keyboard Handler per Mode 
       - [x] Abstract the input system to input_handling/keyboard_handler.py
   - [x] Cursor Movement Logic 
-  - [ ] File Operations  
+  - [x] File Operations (can be considered done as of now)
   - [x] Viewport & Basic Scrolling  
 - [ ] Vim-like Operations
   - [ ] Operators  
