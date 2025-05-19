@@ -1,6 +1,7 @@
 import pygame as pg
 from OpenGL.GL import *
 from pygame import freetype
+from syntax.highlighter import SYNTAX_COLORS, TOKEN_TYPE_DEFAULT
 
 if not freetype.get_init():
     freetype.init()
@@ -20,6 +21,11 @@ class TextRenderer:
         self.descender = self.font.get_sized_descender()
         self.line_height = self.get_highest_glyph_height()
 
+        if self.line_height<=0: 
+            self.line_height = font_size
+
+        self.syntax_colors = SYNTAX_COLORS
+
     def get_highest_glyph_height(self) -> int:
         """Returns the height of the highest glyph"""
 
@@ -28,13 +34,75 @@ class TextRenderer:
         max_y = max(metrics, key=lambda x: x[3])[3]
         return max_y + abs(self.descender)
 
-    def render_text_to_texture(self, text_string: str):
+    def render_line_segmented_to_texture(self, tokenized_line_segments):
+        """
+        Renders a line composed of (token_type, text_segment) tuples to a single texture.
+        Returns (texture_id, total_width, fixed_texture_height).
+        """
+        if not tokenized_line_segments:
+            return self.render_text_to_texture("") # Use old method for simple empty lines
+
+        # Calculate total width required for the line
+        total_width = 0
+        for _, text_segment in tokenized_line_segments:
+            total_width += self.get_string_width(text_segment)
+        
+        if total_width == 0:
+             return self.render_text_to_texture("") # Use old method for simple empty lines
+        
+        surface_width = max(1, total_width)
+        surface_height = self.line_height
+
+        # Create a single surface for the whole line
+        line_surface = pg.Surface((surface_width, surface_height), pg.SRCALPHA)
+        line_surface.fill((0, 0, 0, 0)) # Transparent background
+
+        current_x_offset = 0
+        self.font.origin = True # For baseline alignment
+
+        for token_type, text_segment in tokenized_line_segments:
+            if not text_segment: continue # Skip empty
+
+            segment_color = self.syntax_colors.get(token_type, self.syntax_colors[TOKEN_TYPE_DEFAULT])
+            
+            try:
+                self.font.render_to(line_surface, 
+                                    (current_x_offset, self.ascender),
+                                    text_segment, 
+                                    fgcolor=segment_color)
+            except pg.error as e:
+                print(f"Pygame error rendering segment '{text_segment}': {e}")
+                # Fallback: render with default color or skip
+                self.font.render_to(line_surface, (current_x_offset, self.ascender), text_segment, fgcolor=self.syntax_colors[TOKEN_TYPE_DEFAULT])
+            except Exception as e:
+                print(f"General error rendering segment '{text_segment}': {e}")
+
+            current_x_offset += self.get_string_width(text_segment)
+            
+        self.font.origin = False
+
+        texture_data = pg.image.tostring(line_surface, "RGBA", True)
+        tex_id = glGenTextures(1)
+        glBindTexture(GL_TEXTURE_2D, tex_id)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, surface_width, surface_height, 0, 
+                     GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+        glBindTexture(GL_TEXTURE_2D, 0)
+
+        return tex_id, total_width, surface_height
+
+    def render_text_to_texture(self, text_string: str, color_override=None):
         """
         Renders a string to a Pygame surface of FIXED LINE HEIGHT, with text
         baseline-aligned. Then converts this surface to an OpenGL texture.
+        Default color can be overriden with a (R,G,B) variable.
         Returns (texture_id, actual_text_width, fixed_texture_height).
         """
         actual_text_width = self.get_string_width(text_string)
+        final_color = color_override if color_override else self.syntax_colors[TOKEN_TYPE_DEFAULT]
 
         if not text_string.strip() and actual_text_width == 0:
             return None, 0, self.line_height
@@ -50,7 +118,7 @@ class TextRenderer:
 
         try:
             self.font.origin = True
-            self.font.render_to(target_surface, (0, self.ascender), text_string, fgcolor=self.color)
+            self.font.render_to(target_surface, (0, self.ascender), text_string, fgcolor=final_color)
             self.font.origin = False
         except pg.error as e:
             print(f"Pg error rendering text '{text_string[:20]}...': {e}")

@@ -1,10 +1,13 @@
 from .text_renderer import TextRenderer
 from OpenGL.GL import *
 from editor.modes import EditorMode
+from syntax.highlighter import highlight_line, PYTHON_SYNTAX_RULES, TOKEN_TYPE_DEFAULT
+from editor.buffer import Buffer
+from editor.modes import EditorState
 
 class EditorRenderer:
     def __init__(self, font_path, font_size):
-        self.text_renderer = TextRenderer(font_path, font_size, color=(220, 220, 220))
+        self.text_renderer = TextRenderer(font_path, font_size)
         self.line_height = self.text_renderer.line_height
         self.visible_lines_in_viewport = 0
         self.padding_x = 5
@@ -12,19 +15,25 @@ class EditorRenderer:
         # Key: line_index, Value: (texture_id, actual_text_width, texture_height, text_content_str)
         self.line_texture_cache = {}
         self.cursor_color = (240, 240, 240, 255)
+        self.status_text_renderer_color = (180, 180, 180)
+        self.line_num_renderer_color = (100, 100, 120)
         self.cursor_width = 2
         status_font_size = max(12, int(font_size * 0.8))
+        
 
         try:
-            self.status_text_renderer = TextRenderer(font_path, status_font_size, color=(180, 180, 180))
-        except Exception as e:
-            print(f"Could not create status_text_renderer: {e}, falling back.")
-            self.status_text_renderer = self.text_renderer
+            self.status_text_renderer = TextRenderer(font_path, status_font_size, self.status_text_renderer_color)
+        except Exception: # Fallback
+            self.status_text_renderer = self.text_renderer 
+            self.status_text_renderer_color = self.text_renderer.syntax_colors[TOKEN_TYPE_DEFAULT]
 
+
+        # Line number renderer
         try:
-            self.line_num_renderer = TextRenderer(font_path, font_size, color=(100, 100, 120))
+            self.line_num_renderer = TextRenderer(font_path, font_size, self.line_num_renderer_color) 
         except Exception:
             self.line_num_renderer = self.text_renderer
+            self.line_num_renderer_color = self.text_renderer.syntax_colors[TOKEN_TYPE_DEFAULT]
 
         self.line_number_width = 0
         self.gutter_padding = 5            
@@ -45,7 +54,7 @@ class EditorRenderer:
 
 
 
-    def _calculate_line_number_width(self, buffer_obj):
+    def _calculate_line_number_width(self, buffer_obj: Buffer):
         """Calculates the width needed for the line number gutter."""
         max_line_num = buffer_obj.get_line_count()
         if max_line_num == 0:
@@ -53,7 +62,7 @@ class EditorRenderer:
         
         return self.line_num_renderer.get_string_width(str(max_line_num)) + self.gutter_padding
 
-    def render_buffer(self, buffer_obj, editor_state, screen_height_param):
+    def render_buffer(self, buffer_obj: Buffer, editor_state: EditorState, screen_height_param):
         if self.visible_lines_in_viewport == 0:
              self._calculate_visible_lines(screen_height_param)
 
@@ -70,10 +79,7 @@ class EditorRenderer:
             display_line_index = i - start_render_line
 
             line_num_str = str(i + 1) # Line numbers are 1-indexed for display
-            ln_tex_id, ln_w, ln_h = self.line_num_renderer.render_text_to_texture(line_num_str)
-
-            ln_y_pos = self.padding_y + (display_line_index * self.line_height)
-            ln_tex_id, ln_w, ln_h = self.line_num_renderer.render_text_to_texture(line_num_str)
+            ln_tex_id, ln_w, ln_h = self.line_num_renderer.render_text_to_texture(line_num_str, self.line_num_renderer_color)
 
             if ln_tex_id:
                 ln_x_pos = self.padding_x + (self.line_number_width - self.gutter_padding - ln_w)
@@ -90,8 +96,9 @@ class EditorRenderer:
             else: # Not cached or text changed
                 if cached_entry: # Text changed for this line number, cleanup old
                     self.text_renderer.cleanup_texture(cached_entry[0])
-                
-                texture_id, tex_w, tex_h_rendered = self.text_renderer.render_text_to_texture(line_text)
+
+                tokenized_segments = highlight_line(line_text, PYTHON_SYNTAX_RULES)
+                texture_id, tex_w, tex_h_rendered = self.text_renderer.render_line_segmented_to_texture(tokenized_segments)
                 # tex_h_rendered should be self.line_height
                 self.line_texture_cache[i] = (texture_id, tex_w, tex_h_rendered, line_text)
                 tex_h = tex_h_rendered
@@ -147,11 +154,9 @@ class EditorRenderer:
         glVertex2f(cursor_x_offset, cursor_y_offset + self.line_height)               # Bottom-left
         glEnd()
 
-    def render_command_line(self, editor_state, screen_width, screen_height):
+    def render_command_line(self, editor_state: EditorState, screen_width, screen_height):
         if editor_state.mode != EditorMode.COMMAND and not editor_state.command_buffer:
             # If not in command mode and no persistent message, render normal status bar
-            # This assumes editor_buffer is passed if your status bar needs it
-            # self.render_status_bar(editor_state, editor_buffer, screen_width, screen_height)
             return 
 
         cmd_renderer = self.status_text_renderer 
@@ -186,7 +191,7 @@ class EditorRenderer:
                 glVertex2f(cursor_x_cmd, y_pos + cmd_cursor_height)
                 glEnd()
 
-    def render_status_bar(self, editor_state, editor_buffer, screen_width, screen_height):
+    def render_status_bar(self, editor_state: EditorState, editor_buffer: Buffer, screen_width, screen_height):
         """Renders the status bar on the bottom left of the screen."""
         if editor_state.mode == EditorMode.COMMAND:
             self.render_command_line(editor_state, screen_width, screen_height)
@@ -208,7 +213,7 @@ class EditorRenderer:
         status_text = f"{status_prefix}{mode_name}  {filepath_display}{dirty_indicator}"
 
         texture_id, tex_w, tex_h = \
-            self.status_text_renderer.render_text_to_texture(status_text)
+            self.status_text_renderer.render_text_to_texture(status_text, self.status_text_renderer_color)
 
         if texture_id:
             x_pos = self.padding_x 

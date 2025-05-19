@@ -8,7 +8,7 @@ from editor.modes import EditorMode, EditorState
 from input_handling.keyboard_handler import KeyboardHandler
 
 SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
+SCREEN_HEIGHT = 800
 FPS = 60
 
 def init_opengl():
@@ -25,7 +25,7 @@ def init_opengl():
     glDisable(GL_DEPTH_TEST)
 
 FONT_PATH = "assets/fonts/Consolas.ttf"
-FONT_SIZE = 30
+FONT_SIZE = 24
 
 def main():
     pg.init()
