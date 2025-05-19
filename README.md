@@ -26,7 +26,7 @@ A programming editor made with pyOpenGL
 - [ ] Polish & Advanced Features
   - [x] Status Bar  
   - [x] Command Line UI
-  - [ ] Basic Syntax Highlighting
+  - [x] Basic Syntax Highlighting
   - [ ] Search 
   - [ ] Text Rendering Optimizations 
   - [ ] Configuration Files 
