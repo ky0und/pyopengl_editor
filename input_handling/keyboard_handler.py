@@ -1,8 +1,10 @@
 import pygame as pg
+import os
 from editor.modes import EditorMode, EditorState, Operator
 from editor.buffer import Buffer
 from editor.cursor import Cursor
 from rendering.renderer import EditorRenderer
+from syntax.highlighter import get_rules_for_extension
 
 class KeyboardHandler:
     def __init__(self, editor_buffer: Buffer, 
@@ -315,9 +317,11 @@ class KeyboardHandler:
             filepath = args[0] if args else self.buffer.filepath
             if filepath:
                 self.buffer.save_to_file(filepath)
+                self._update_syntax_highlighting_for_buffer()
                 self.state.switch_to_mode(self.state.previous_mode)
             elif self.buffer.filepath: # No arg, but has a current path
                 self.buffer.save_to_file()
+                self._update_syntax_highlighting_for_buffer()
                 self.state.switch_to_mode(self.state.previous_mode)
             else:
                 self.state.command_buffer = "Error: No filename given for :w"
@@ -345,6 +349,7 @@ class KeyboardHandler:
                 filepath_to_open = args[0]
                 self._reset_buffer_state_for_new_load()
                 self.buffer.load_from_file(filepath_to_open)
+                self._update_syntax_highlighting_for_buffer()
                 self.state.switch_to_mode(self.state.previous_mode) # Return to normal after loading
             else:
                 self.state.command_buffer = "Error: No filename given for :e"
@@ -516,3 +521,16 @@ class KeyboardHandler:
                     s_col, e_col = min(start_col, end_col), max(start_col, end_col)
                     return line_content[s_col : e_col + 1]
                 return ""
+            
+    def _update_syntax_highlighting_for_buffer(self):
+        """Updates EditorState's syntax rules based on the current buffer's filepath."""
+        if self.buffer.filepath:
+            _, ext = os.path.splitext(self.buffer.filepath)
+            file_ext_cleaned = ext[1:] if ext.startswith('.') else ext # Remove dot, e.g. ".py" -> "py"
+            rules, lang_name = get_rules_for_extension(file_ext_cleaned)
+            self.state.set_syntax_highlighting(rules, lang_name)
+            if rules: # If rules were found, all lines potentially need re-rendering with new highlighting
+                self.renderer.invalidate_all_cache()
+        else: # No filepath, disable highlighting
+            self.state.set_syntax_highlighting(None, None)
+            self.renderer.invalidate_all_cache() # Invalidate to remove old highlighting

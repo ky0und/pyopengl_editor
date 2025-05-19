@@ -42,6 +42,7 @@ def main():
     editor_state = EditorState()
 
     keyboard_handler = KeyboardHandler(editor_buffer, editor_state, cursor, editor_renderer)
+    keyboard_handler._update_syntax_highlighting_for_buffer()
 
     editor_renderer._calculate_visible_lines(SCREEN_HEIGHT)
 

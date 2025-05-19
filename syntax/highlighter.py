@@ -117,6 +117,20 @@ PYTHON_SYNTAX_RULES = [
     # (TOKEN_TYPE_BRACE, re.compile(r'[(){}\[\]]')),
 ]
 
+LANGUAGE_RULES_MAP = {
+    "py": {"rules": PYTHON_SYNTAX_RULES, "name": "Python"},
+    # "js": {"rules": JAVASCRIPT_SYNTAX_RULES, "name": "JavaScript"}, # Example for future
+}
+
+
+def get_rules_for_extension(file_extension):
+    """Returns the syntax rules and language name for a given file extension (e.g., 'py')."""
+    if not file_extension:
+        return None, None
+    lang_config = LANGUAGE_RULES_MAP.get(file_extension.lower())
+    if lang_config:
+        return lang_config["rules"], lang_config["name"]
+    return None, None
 
 def highlight_line(line_text, rules):
     """

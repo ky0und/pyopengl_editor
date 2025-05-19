@@ -31,10 +31,22 @@ class EditorState:
             "type": "char"       # "char" or "line" (influences 'p' behavior), TODO: Change this to an enum later
         }
 
+        self.current_syntax_rules = None
+        self.current_language_name = None
+
     def set_register(self, text_content, type_is_linewise):
         self.default_register["text"] = text_content
         self.default_register["type"] = "line" if type_is_linewise else "char"
         print(f"Register set: type='{self.default_register['type']}', content='{text_content[:50]}...'")
+
+    def set_syntax_highlighting(self, rules, language_name=None):
+        """Sets the syntax highlighting rules to be used."""
+        self.current_syntax_rules = rules
+        self.current_language_name = language_name
+        if rules:
+            print(f"Syntax highlighting enabled for: {language_name or 'Unknown Language'}")
+        else:
+            print("Syntax highlighting disabled.")
 
     def get_register_content(self):
         return self.default_register["text"], self.default_register["type"] == "line"

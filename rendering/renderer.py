@@ -97,11 +97,17 @@ class EditorRenderer:
                 if cached_entry: # Text changed for this line number, cleanup old
                     self.text_renderer.cleanup_texture(cached_entry[0])
 
-                tokenized_segments = highlight_line(line_text, PYTHON_SYNTAX_RULES)
-                texture_id, tex_w, tex_h_rendered = self.text_renderer.render_line_segmented_to_texture(tokenized_segments)
-                # tex_h_rendered should be self.line_height
+                if editor_state.current_syntax_rules:
+                    tokenized_segments = highlight_line(line_text, PYTHON_SYNTAX_RULES)
+                    texture_id, tex_w, tex_h_rendered = self.text_renderer.render_line_segmented_to_texture(tokenized_segments)
+                    # tex_h_rendered should be self.line_height
+                    self.line_texture_cache[i] = (texture_id, tex_w, tex_h_rendered, line_text)
+                    tex_h = tex_h_rendered
+                else:
+                    texture_id, tex_w, tex_h_rendered = self.text_renderer.render_text_to_texture(line_text)
+                
                 self.line_texture_cache[i] = (texture_id, tex_w, tex_h_rendered, line_text)
-                tex_h = tex_h_rendered
+                tex_h = tex_h_rendered            
 
             if texture_id is not None: # tex_w can be 0 for empty lines
                  self.text_renderer.draw_text(texture_id, text_area_start_x, current_y, tex_w, tex_h)
