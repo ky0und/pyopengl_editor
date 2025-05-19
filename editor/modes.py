@@ -25,6 +25,20 @@ class EditorState:
         self.operator_pending_start_cursor_pos = None
         self.pending_operator_keystrokes = "" # To capture multi-key operators like 'dd'
 
+        # Register for yank/put
+        self.default_register = {
+            "text": "",
+            "type": "char"       # "char" or "line" (influences 'p' behavior), TODO: Change this to an enum later
+        }
+
+    def set_register(self, text_content, type_is_linewise):
+        self.default_register["text"] = text_content
+        self.default_register["type"] = "line" if type_is_linewise else "char"
+        print(f"Register set: type='{self.default_register['type']}', content='{text_content[:50]}...'")
+
+    def get_register_content(self):
+        return self.default_register["text"], self.default_register["type"] == "line"
+
     def switch_to_mode(self, new_mode: EditorMode, preserve_command_state=False):
         current_mode = self.mode
         # print(f"Switching from {current_mode.name} to {new_mode.name} mode")
