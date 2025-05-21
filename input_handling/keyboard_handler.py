@@ -40,6 +40,11 @@ class KeyboardHandler:
             action_taken = self._handle_operator_pending_mode(event)
             return action_taken
 
+        # --- Handle VISUAL mode inputs before general Esc ---
+        if self.state.mode in [EditorMode.VISUAL, EditorMode.VISUAL_LINE]:
+            action_taken = self._handle_visual_mode(event)
+            return action_taken
+
         # --- Global Mode-Independent Keys ---
         if event.key == pg.K_ESCAPE:
             if self.state.mode == EditorMode.INSERT:
@@ -61,10 +66,131 @@ class KeyboardHandler:
         
         return action_taken
 
+    def _get_normalized_selection_range(self):
+        """Helper to get (start_line, start_col, end_line, end_col) from visual state."""
+        if not self.state.visual_mode_anchor:
+            return None
+        
+        al, ac = self.state.visual_mode_anchor
+        cl, cc = self.cursor.line, self.cursor.col
+
+        if (al, ac) <= (cl, cc):
+            return al, ac, cl, cc
+        else:
+            return cl, cc, al, ac
+
+    def _handle_visual_mode(self, event):
+        action_taken = True # Most keys extend selection or perform action
+        original_cursor_line = self.cursor.line
+        original_cursor_col = self.cursor.col
+
+        if event.key == pg.K_ESCAPE:
+            self.state.switch_to_mode(EditorMode.NORMAL) # Exits visual, clears anchor
+            return True
+
+        # --- Operators in Visual Mode ---
+        # Pressing d, c, y will apply to selection and exit visual mode
+        op_to_apply = None
+        if event.key == pg.K_d: op_to_apply = Operator.DELETE
+        elif event.key == pg.K_c: op_to_apply = Operator.CHANGE
+        elif event.key == pg.K_y: op_to_apply = Operator.YANK
+
+        if op_to_apply:
+            selection = self._get_normalized_selection_range()
+            if not selection:
+                self.state.switch_to_mode(EditorMode.NORMAL); return True # Should not happen
+            
+            start_l, start_c, end_l, end_c = selection
+            is_linewise_selection = (self.state.mode == EditorMode.VISUAL_LINE)
+
+            if is_linewise_selection:
+                # For linewise, select whole lines from start_l to end_l
+                text_to_operate_on = self._get_text_range(start_l, 0, end_l, 0, True)
+            else: # Character-wise
+                # Adjust end_c to be inclusive for _get_text_range if it expects that
+                # Our current _get_text_range for charwise is inclusive on end_c
+                text_to_operate_on = self._get_text_range(start_l, start_c, end_l, end_c, False)
+
+            if text_to_operate_on is not None: # Check if text was actually selected
+                self.state.set_register(text_to_operate_on, is_linewise_selection)
+
+                if op_to_apply == Operator.DELETE or op_to_apply == Operator.CHANGE:
+                    # --- Perform Deletion ---
+                    if is_linewise_selection:
+                        num_lines = end_l - start_l + 1
+                        self.renderer.handle_lines_deleted(start_l, num_lines)
+                        for _ in range(num_lines):
+                            if start_l < self.buffer.get_line_count():
+                                self.buffer.lines.pop(start_l)
+                        if not self.buffer.lines: self.buffer.lines.append("")
+                        self.buffer._mark_dirty()
+                        self.cursor.line = min(start_l, self.buffer.get_line_count() - 1)
+                        self.cursor.col = 0
+                    else: # Character-wise deletion (more complex)
+                        # This needs robust range deletion. For now, a simplified placeholder:
+                        # Delete from (start_l, start_c) to (end_l, end_c)
+                        # If on same line:
+                        if start_l == end_l:
+                            line = self.buffer.get_line(start_l)
+                            if line is not None:
+                                self.renderer.invalidate_line_cache(start_l)
+                                self.buffer.lines[start_l] = line[:start_c] + line[end_c + 1:]
+                                self.buffer._mark_dirty()
+                                self.cursor.line = start_l
+                                self.cursor.col = start_c
+                        else: # Multi-line character-wise delete (complex)
+                            # 1. Handle first line: line[:start_c]
+                            # 2. Delete middle lines (start_l+1 to end_l-1)
+                            # 3. Handle last line: line[end_c+1:]
+                            # 4. Concatenate first part and last part
+                            # This is a TODO for robust implementation.
+                            print("TODO: Multi-line character-wise delete from visual mode")
+                            # For now, fallback to deleting lines if selection spans multiple
+                            num_lines = end_l - start_l + 1
+                            self.renderer.handle_lines_deleted(start_l, num_lines) # etc. (like linewise)
+                            self.cursor.line = start_l; self.cursor.col = 0
+
+
+                    if op_to_apply == Operator.CHANGE:
+                        self.state.switch_to_mode(EditorMode.INSERT) # Cursor already placed by delete
+                    else: # DELETE
+                        self.state.switch_to_mode(EditorMode.NORMAL)
+                else: # YANK
+                    self.state.switch_to_mode(EditorMode.NORMAL)
+            else: # No text selected / error
+                self.state.switch_to_mode(EditorMode.NORMAL)
+            return True
+            
+        # --- Movement in Visual Mode (Extends Selection) ---
+        if event.key == pg.K_h: self.cursor.move_left(self.buffer, mode_is_normal=True)
+        elif event.key == pg.K_l: self.cursor.move_right(self.buffer, mode_is_normal=True)
+        elif event.key == pg.K_k: self.cursor.move_up(self.buffer)
+        elif event.key == pg.K_j: self.cursor.move_down(self.buffer)
+        # Add more motions: w, b, e, $, 0, G, gg etc.
+        # These motions will update self.cursor, and the selection highlight will adjust automatically.
+        
+        # If cursor moved, it's an action
+        if (self.cursor.line, self.cursor.col) != (original_cursor_line, original_cursor_col):
+            action_taken = True
+        else: # No movement, no operator, perhaps an unhandled key
+            action_taken = False
+            
+        return action_taken
+
     # Following https://vim.rtorr.com/
     def _handle_normal_mode(self, event):
         action_taken = False
         mods = pg.key.get_mods()
+        current_cursor_tuple = (self.cursor.line, self.cursor.col)
+
+        # --- Entering Visual Modes ---
+        if event.key == pg.K_v: 
+            if mods & pg.KMOD_SHIFT: # 'V' - linewise visual
+                self.state.switch_to_mode(EditorMode.VISUAL_LINE, anchor_pos=current_cursor_tuple)
+            else: # 'v'  - character-wise visual
+                self.state.switch_to_mode(EditorMode.VISUAL, anchor_pos=current_cursor_tuple)
+            action_taken = True
+            return action_taken
 
         if event.key == pg.K_SEMICOLON and (mods & pg.KMOD_SHIFT): # ':' key
             self.state.switch_to_mode(EditorMode.COMMAND)

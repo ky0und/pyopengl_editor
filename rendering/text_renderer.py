@@ -34,6 +34,57 @@ class TextRenderer:
         max_y = max(metrics, key=lambda x: x[3])[3]
         return max_y + abs(self.descender)
 
+    def render_line_with_custom_colors(self, colored_segments):
+        """
+        Renders a line composed of (text_segment, specific_color_rgb_tuple) tuples
+        to a single texture.
+        Returns (texture_id, total_width, fixed_texture_height).
+        """
+        if not colored_segments:
+            return self.render_text_to_texture("")
+
+        total_width = 0
+        for text_segment, _ in colored_segments:
+            total_width += self.get_string_width(text_segment)
+        
+        if total_width == 0:
+             return self.render_text_to_texture("")
+
+        surface_width = max(1, total_width)
+        surface_height = self.line_height
+        line_surface = pg.Surface((surface_width, surface_height), pg.SRCALPHA)
+        line_surface.fill((0, 0, 0, 0))
+
+        current_x_offset = 0
+        self.font.origin = True
+        for text_segment, segment_color_rgb in colored_segments:
+            if not text_segment: continue
+            try:
+                self.font.render_to(line_surface, 
+                                    (current_x_offset, self.ascender),
+                                    text_segment, 
+                                    fgcolor=segment_color_rgb)
+            except Exception as e:
+                print(f"Error rendering custom colored segment '{text_segment}': {e}")
+                default_render_color = self.syntax_colors.get(TOKEN_TYPE_DEFAULT, (200,200,200))
+                self.font.render_to(line_surface, (current_x_offset, self.ascender), text_segment, fgcolor=default_render_color)
+
+
+            current_x_offset += self.get_string_width(text_segment)
+        self.font.origin = False
+
+        texture_data = pg.image.tostring(line_surface, "RGBA", True)
+        tex_id = glGenTextures(1)
+        glBindTexture(GL_TEXTURE_2D, tex_id)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, surface_width, surface_height, 0, 
+                     GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+        glBindTexture(GL_TEXTURE_2D, 0)
+        return tex_id, total_width, surface_height
+
     def render_line_segmented_to_texture(self, tokenized_line_segments):
         """
         Renders a line composed of (token_type, text_segment) tuples to a single texture.
@@ -150,6 +201,8 @@ class TextRenderer:
 
         glEnable(GL_TEXTURE_2D)
         glBindTexture(GL_TEXTURE_2D, text_texture_id)
+
+        glColor4f(1.0, 1.0, 1.0, 1.0)
 
         glBegin(GL_QUADS)
 

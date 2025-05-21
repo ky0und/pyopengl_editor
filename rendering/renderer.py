@@ -1,9 +1,9 @@
 from .text_renderer import TextRenderer
 from OpenGL.GL import *
-from editor.modes import EditorMode
+from editor.modes import EditorMode, EditorState
 from syntax.highlighter import highlight_line, PYTHON_SYNTAX_RULES, TOKEN_TYPE_DEFAULT
 from editor.buffer import Buffer
-from editor.modes import EditorState
+from editor.cursor import Cursor
 
 class EditorRenderer:
     def __init__(self, font_path, font_size):
@@ -17,6 +17,7 @@ class EditorRenderer:
         self.cursor_color = (240, 240, 240, 255)
         self.status_text_renderer_color = (180, 180, 180)
         self.line_num_renderer_color = (100, 100, 120)
+        self.selection_bg_color_rgb = (50, 80, 120)
         self.cursor_width = 2
         status_font_size = max(12, int(font_size * 0.8))
         
@@ -25,7 +26,6 @@ class EditorRenderer:
             self.status_text_renderer = TextRenderer(font_path, status_font_size, self.status_text_renderer_color)
         except Exception: # Fallback
             self.status_text_renderer = self.text_renderer 
-            self.status_text_renderer_color = self.text_renderer.syntax_colors[TOKEN_TYPE_DEFAULT]
 
 
         # Line number renderer
@@ -33,12 +33,32 @@ class EditorRenderer:
             self.line_num_renderer = TextRenderer(font_path, font_size, self.line_num_renderer_color) 
         except Exception:
             self.line_num_renderer = self.text_renderer
-            self.line_num_renderer_color = self.text_renderer.syntax_colors[TOKEN_TYPE_DEFAULT]
 
         self.line_number_width = 0
         self.gutter_padding = 5            
 
-      
+    def get_selection_range(self, editor_state: EditorState, cursor_obj):
+        """
+        Determines the normalized selection range (start_line, start_col, end_line, end_col).
+        The 'end' is typically exclusive for ranges but inclusive for single points or visual display.
+        Returns None if not in visual mode or no anchor.
+        """
+        if editor_state.mode not in [EditorMode.VISUAL, EditorMode.VISUAL_LINE] or not editor_state.visual_mode_anchor:
+            return None
+
+        anchor_line, anchor_col = editor_state.visual_mode_anchor
+        current_line, current_col = cursor_obj.line, cursor_obj.col
+
+        # Normalize: start is always before or equal to end
+        if (anchor_line, anchor_col) <= (current_line, current_col):
+            sel_start_line, sel_start_col = anchor_line, anchor_col
+            sel_end_line, sel_end_col = current_line, current_col
+        else:
+            sel_start_line, sel_start_col = current_line, current_col
+            sel_end_line, sel_end_col = anchor_line, anchor_col
+        
+        return sel_start_line, sel_start_col, sel_end_line, sel_end_col
+
     def _calculate_visible_lines(self, screen_height):
         """Calculate how many lines fit in the main text area."""
         available_height = screen_height
@@ -62,11 +82,10 @@ class EditorRenderer:
         
         return self.line_num_renderer.get_string_width(str(max_line_num)) + self.gutter_padding
 
-    def render_buffer(self, buffer_obj: Buffer, editor_state: EditorState, screen_height_param):
+    def render_buffer(self, buffer_obj: Buffer, editor_state: EditorState, screen_height_param, cursor_obj: Cursor):
         if self.visible_lines_in_viewport == 0:
-             self._calculate_visible_lines(screen_height_param)
+            self._calculate_visible_lines(screen_height_param)
 
-        current_y = self.padding_y
         self.line_number_width = self._calculate_line_number_width(buffer_obj)  
         text_area_start_x = self.padding_x + self.line_number_width
 
@@ -75,53 +94,118 @@ class EditorRenderer:
         end_render_line = min(buffer_obj.get_line_count(), 
                               start_render_line + self.visible_lines_in_viewport)
 
+        current_selection_details = self.get_selection_range(editor_state, cursor_obj)
+
         for i in range(start_render_line, end_render_line):
             display_line_index = i - start_render_line
+            current_line_y_pos = self.padding_y + (display_line_index * self.line_height)
+
+            if editor_state.mode in [EditorMode.VISUAL, EditorMode.VISUAL_LINE]:
+                self._render_selection_for_line(i, current_line_y_pos, text_area_start_x,
+                                                buffer_obj, current_selection_details, editor_state)
 
             line_num_str = str(i + 1) # Line numbers are 1-indexed for display
             ln_tex_id, ln_w, ln_h = self.line_num_renderer.render_text_to_texture(line_num_str, self.line_num_renderer_color)
 
             if ln_tex_id:
                 ln_x_pos = self.padding_x + (self.line_number_width - self.gutter_padding - ln_w)
-                self.line_num_renderer.draw_text(ln_tex_id, ln_x_pos, current_y, ln_w, ln_h)
+                self.line_num_renderer.draw_text(ln_tex_id, ln_x_pos, current_line_y_pos, ln_w, ln_h)
                 self.line_num_renderer.cleanup_texture(ln_tex_id)
 
             line_text = buffer_obj.get_line(i)
+            if line_text is None: line_text = ""
+
             cached_entry = self.line_texture_cache.get(i)
-            texture_id, tex_w, tex_h = None, 0, self.line_height 
+            texture_id, tex_w, tex_h = None, 0, self.line_height
+            
+            # Only re-render texture if text content changes.
+            needs_texture_re_render = True
+            if cached_entry and cached_entry[3] == line_text:
+                 texture_id, tex_w, tex_h, _ = cached_entry
+                 needs_texture_re_render = False
 
-            if cached_entry and cached_entry[3] == line_text: # Content matches
-                texture_id, tex_w, tex_h_cached, _ = cached_entry
-                tex_h = tex_h_cached 
-            else: # Not cached or text changed
-                if cached_entry: # Text changed for this line number, cleanup old
-                    self.text_renderer.cleanup_texture(cached_entry[0])
-
+            if needs_texture_re_render:
+                if cached_entry: self.text_renderer.cleanup_texture(cached_entry[0])
+                
                 if editor_state.current_syntax_rules:
-                    tokenized_segments = highlight_line(line_text, PYTHON_SYNTAX_RULES)
-                    texture_id, tex_w, tex_h_rendered = self.text_renderer.render_line_segmented_to_texture(tokenized_segments)
-                    # tex_h_rendered should be self.line_height
-                    self.line_texture_cache[i] = (texture_id, tex_w, tex_h_rendered, line_text)
-                    tex_h = tex_h_rendered
+                    # Syntax highlighting active: tokenize and render segmented
+                    syntax_tokens = highlight_line(line_text, editor_state.current_syntax_rules)
+                    texture_id, tex_w, tex_h_rendered = self.text_renderer.render_line_segmented_to_texture(
+                        syntax_tokens
+                    )
                 else:
-                    texture_id, tex_w, tex_h_rendered = self.text_renderer.render_text_to_texture(line_text)
+                    # No syntax highlighting: render plain
+                    texture_id, tex_w, tex_h_rendered = self.text_renderer.render_text_to_texture(
+                        line_text
+                    )
                 
                 self.line_texture_cache[i] = (texture_id, tex_w, tex_h_rendered, line_text)
-                tex_h = tex_h_rendered            
+                tex_h = tex_h_rendered # tex_h will be self.line_height
 
-            if texture_id is not None: # tex_w can be 0 for empty lines
-                 self.text_renderer.draw_text(texture_id, text_area_start_x, current_y, tex_w, tex_h)
-            
-            current_y += self.line_height
-
-        # Pruning for lines that no longer exist at the end of the buffer
-        max_buffer_line = buffer_obj.get_line_count() -1
+            if texture_id is not None:
+                 self.text_renderer.draw_text(texture_id, text_area_start_x, current_line_y_pos, tex_w, tex_h)
+        
+        # Pruning cache (as before)
+        max_buffer_line = buffer_obj.get_line_count() - 1
         keys_to_prune = [k for k in self.line_texture_cache if k > max_buffer_line]
-        for k in keys_to_prune:
-            self._cleanup_cached_texture(k)
+        for k_prune in keys_to_prune: self._cleanup_cached_texture(k_prune)
+
+    def _render_selection_for_line(self, buffer_line_idx, line_y_pos, text_area_start_x,
+                                   buffer_obj: Buffer, selection_details, editor_state: EditorState):
+        if not selection_details:
+            return
+
+        sel_start_line, sel_start_col, sel_end_line, sel_end_col = selection_details
+
+        if not (sel_start_line <= buffer_line_idx <= sel_end_line):
+            return
+
+        line_content = buffer_obj.get_line(buffer_line_idx)
+        if line_content is None: return
+
+        x1, x2 = 0, 0
+        
+        current_line_text_for_calc = line_content if line_content else " "
+
+        is_fully_selected_line = False
+
+        if editor_state.mode == EditorMode.VISUAL_LINE:
+            is_fully_selected_line = True
+        elif buffer_line_idx > sel_start_line and buffer_line_idx < sel_end_line:
+            is_fully_selected_line = True
+
+        if is_fully_selected_line:
+            x1 = text_area_start_x
+            line_render_width = self.text_renderer.get_string_width(current_line_text_for_calc)
+            x2 = text_area_start_x + line_render_width
+            if not line_content:
+                 x2 = text_area_start_x + self.text_renderer.get_string_width(" ")
+        else:
+            if buffer_line_idx == sel_start_line:
+                text_before_sel_start = current_line_text_for_calc[:sel_start_col]
+                x1 = text_area_start_x + self.text_renderer.get_string_width(text_before_sel_start)
+            else:
+                x1 = text_area_start_x
+
+            if buffer_line_idx == sel_end_line:
+                if sel_end_col == -1 and not current_line_text_for_calc.strip():
+                     x2 = text_area_start_x + self.text_renderer.get_string_width(" ")
+                elif sel_end_col >= len(current_line_text_for_calc) - 1:
+                     x2 = text_area_start_x + self.text_renderer.get_string_width(current_line_text_for_calc)
+                else:
+                     text_up_to_sel_end_inclusive = current_line_text_for_calc[:sel_end_col + 1]
+                     x2 = text_area_start_x + self.text_renderer.get_string_width(text_up_to_sel_end_inclusive)
+            else:
+                 x2 = text_area_start_x + self.text_renderer.get_string_width(current_line_text_for_calc)
 
 
-    def render_cursor(self, cursor_obj, buffer_obj, editor_state, is_visible=True):
+        if x1 < x2 : 
+            glDisable(GL_TEXTURE_2D) 
+            glColor3ub(*self.selection_bg_color_rgb)
+            glRectf(x1, line_y_pos, x2, line_y_pos + self.line_height)
+    
+
+    def render_cursor(self, cursor_obj: Cursor, buffer_obj: Buffer, editor_state: EditorState, is_visible=True):
         if not is_visible:
             return
         

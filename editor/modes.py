@@ -3,7 +3,8 @@ from enum import Enum, auto
 class EditorMode(Enum):
     NORMAL = auto()
     INSERT = auto()
-    # VISUAL = auto() # TODO
+    VISUAL = auto()
+    VISUAL_LINE = auto()
     COMMAND = auto()
     OPERATOR_PENDING = auto()
 
@@ -21,6 +22,7 @@ class EditorState:
         self.command_buffer = ""
         self.command_cursor_pos = 0
         self.previous_mode = EditorMode.NORMAL
+
         self.active_operator: Operator = Operator.NONE
         self.operator_pending_start_cursor_pos = None
         self.pending_operator_keystrokes = "" # To capture multi-key operators like 'dd'
@@ -33,6 +35,11 @@ class EditorState:
 
         self.current_syntax_rules = None
         self.current_language_name = None
+
+        self.visual_mode_anchor = None
+
+    def _clear_visual_selection_state(self):
+        self.visual_mode_anchor = None
 
     def set_register(self, text_content, type_is_linewise):
         self.default_register["text"] = text_content
@@ -51,7 +58,7 @@ class EditorState:
     def get_register_content(self):
         return self.default_register["text"], self.default_register["type"] == "line"
 
-    def switch_to_mode(self, new_mode: EditorMode, preserve_command_state=False):
+    def switch_to_mode(self, new_mode: EditorMode, preserve_command_state=False, anchor_pos=None):
         current_mode = self.mode
         # print(f"Switching from {current_mode.name} to {new_mode.name} mode")
         
@@ -64,17 +71,23 @@ class EditorState:
             self.clear_command()
         elif current_mode == EditorMode.OPERATOR_PENDING:
             self._clear_internal_operator_state()
+        elif current_mode in [EditorMode.VISUAL, EditorMode.VISUAL_LINE]:
+            if new_mode not in [EditorMode.VISUAL, EditorMode.VISUAL_LINE]:
+                 self._clear_visual_selection_state()
 
+        # --- State setup based on ENTERING new_mode ---
         if new_mode == EditorMode.COMMAND and current_mode != EditorMode.COMMAND:
-            self.previous_mode = current_mode # Store mode to return to
+            self.previous_mode = current_mode
             if not preserve_command_state:
                 self.command_buffer = ":"
                 self.command_cursor_pos = 1
-        elif current_mode == EditorMode.COMMAND and new_mode != EditorMode.COMMAND:
-            if not preserve_command_state:
-                self.command_buffer = ""
-                self.command_cursor_pos = 0
-
+        elif new_mode in [EditorMode.VISUAL, EditorMode.VISUAL_LINE]:
+            if current_mode not in [EditorMode.VISUAL, EditorMode.VISUAL_LINE]:
+                if anchor_pos:
+                    self.visual_mode_anchor = anchor_pos
+                else:
+                    print("Warning: Anchor position not explicitly set for Visual mode entry.")
+        
         self.mode = new_mode
 
     def clear_command(self):
