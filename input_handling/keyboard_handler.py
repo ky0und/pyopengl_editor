@@ -160,12 +160,23 @@ class KeyboardHandler:
             else: # No text selected / error
                 self.state.switch_to_mode(EditorMode.NORMAL)
             return True
-            
+
+        # --- Handle PAGEUP/PAGEDOWN ---
+        page_size = self.renderer.visible_lines_in_viewport -1
+        if page_size <=0: page_size = 1 
+        
         # --- Movement in Visual Mode (Extends Selection) ---
         if event.key == pg.K_h: self.cursor.move_left(self.buffer, mode_is_normal=True)
         elif event.key == pg.K_l: self.cursor.move_right(self.buffer, mode_is_normal=True)
         elif event.key == pg.K_k: self.cursor.move_up(self.buffer)
         elif event.key == pg.K_j: self.cursor.move_down(self.buffer)
+        elif event.key == pg.K_PAGEUP:
+            action_taken = self._scroll_viewport(-page_size)
+            return action_taken
+        elif event.key == pg.K_PAGEDOWN:
+            action_taken = self._scroll_viewport(page_size)
+            return action_taken
+
         # Add more motions: w, b, e, $, 0, G, gg etc.
         # These motions will update self.cursor, and the selection highlight will adjust automatically.
         
@@ -191,6 +202,17 @@ class KeyboardHandler:
                 self.state.switch_to_mode(EditorMode.VISUAL, anchor_pos=current_cursor_tuple)
             action_taken = True
             return action_taken
+
+        if mods & pg.KMOD_CTRL:
+            page_size_ctrl = self.renderer.visible_lines_in_viewport - 2 
+            if page_size_ctrl <= 0 : page_size_ctrl = 1
+
+            if event.key == pg.K_b:
+                action_taken = self._scroll_viewport(-page_size_ctrl)
+                return action_taken 
+            elif event.key == pg.K_f:
+                action_taken = self._scroll_viewport(page_size_ctrl)
+                return action_taken 
 
         if event.key == pg.K_SEMICOLON and (mods & pg.KMOD_SHIFT): # ':' key
             self.state.switch_to_mode(EditorMode.COMMAND)
@@ -309,12 +331,34 @@ class KeyboardHandler:
         elif event.key == pg.K_l: # 'l' - move cursor right
             self.cursor.move_right(self.buffer, mode_is_normal=True)
             action_taken = True
+        elif event.key == pg.K_0 or (event.key == pg.K_RIGHTPAREN and mods & pg.KMOD_SHIFT): # '0' (often Shift+0 for ')' key)
+            self.cursor.move_to_line_start(self.buffer)
+            action_taken = True
+        elif event.key == pg.K_6 and mods & pg.KMOD_SHIFT: # '^' (Shift+6)
+            self.cursor.move_to_first_non_whitespace(self.buffer)
+            action_taken = True
+        elif event.key == pg.K_4 and mods & pg.KMOD_SHIFT: # '$' (Shift+4)
+            self.cursor.move_to_line_end(self.buffer, mode_is_normal=True)
+            action_taken = True
+        elif event.key == pg.K_w:
+            self.cursor.move_word_forward(self.buffer)
+            action_taken = True
+        elif event.key == pg.K_b:
+            self.cursor.move_word_backward(self.buffer)
+            action_taken = True
+        elif event.key == pg.K_e:
+            self.cursor.move_to_word_end(self.buffer)
+            action_taken = True
 
         return action_taken
 
     # Following https://vim.rtorr.com/
     def _handle_insert_mode(self, event):
         action_taken = False
+        # --- Handle PAGEUP/PAGEDOWN ---
+        page_size = self.renderer.visible_lines_in_viewport -1
+        if page_size <=0: page_size = 1
+
         if event.key == pg.K_RETURN:
             self.renderer.invalidate_line_cache(self.cursor.line)
             self.renderer.handle_lines_inserted(insert_idx=self.cursor.line + 1, num_inserted_lines=1)
@@ -322,6 +366,24 @@ class KeyboardHandler:
             self.cursor.line += 1
             self.cursor.col = 0
             action_taken = True
+        elif event.key == pg.K_PAGEUP:
+            action_taken = self._scroll_viewport(-page_size)
+            return action_taken
+        elif event.key == pg.K_PAGEDOWN:
+            action_taken = self._scroll_viewport(page_size)
+            return action_taken
+        elif event.key == pg.K_DELETE:
+            # Invalidate cache for current line and potentially next if merging
+            self.renderer.invalidate_line_cache(self.cursor.line)
+            if self.cursor.line + 1 < self.buffer.get_line_count():
+                self.renderer.invalidate_line_cache(self.cursor.line + 1) # If merge happens
+
+            if self.buffer.delete_char_at_cursor(self.cursor.line, self.cursor.col):
+                current_line_len = len(self.buffer.get_line(self.cursor.line) or "")
+                if self.cursor.col > current_line_len : # If cursor was past EOL of merged line
+                    self.cursor.col = current_line_len
+                
+                action_taken = True
         elif event.key == pg.K_BACKSPACE:
             prev_cursor_line = self.cursor.line
             
@@ -369,6 +431,27 @@ class KeyboardHandler:
                 action_taken = True
         return action_taken
     
+    def _scroll_viewport(self, num_lines_to_scroll):
+        """Helper to scroll viewport and adjust cursor if it goes out of view.
+           Positive num_lines_to_scroll moves view down (text up).
+           Negative num_lines_to_scroll moves view up (text down).
+        """
+        new_viewport_start = self.state.viewport_start_line + num_lines_to_scroll
+        
+        # Clamp viewport start
+        max_start_line = max(0, self.buffer.get_line_count() - self.renderer.visible_lines_in_viewport)
+        self.state.viewport_start_line = max(0, min(new_viewport_start, max_start_line))
+
+        if num_lines_to_scroll < 0:
+            self.cursor.line = self.state.viewport_start_line
+        elif num_lines_to_scroll > 0:
+            self.cursor.line = min(self.buffer.get_line_count() - 1,
+                                   self.state.viewport_start_line + self.renderer.visible_lines_in_viewport - 1)
+        
+        self.cursor._clamp_col(self.buffer)
+        return True
+
+
     def _handle_command_mode(self, event):
         action_taken = True
 
