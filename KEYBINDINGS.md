@@ -49,8 +49,8 @@ The editor operates in several distinct modes:
 *   **`w`**: Move cursor forward to the start of the next word (treats newlines as whitespace).
 *   **`b`**: Move cursor backward to the start of the previous/current word (treats newlines as whitespace).
 *   **`e`**: Move cursor forward to the end of the current/next word (treats newlines as whitespace).
-*   **`PageUp`**: Scroll viewport up by approximately one page. Cursor moves to top of new view. (Also available in Insert & Visual modes).
-*   **`PageDown`**: Scroll viewport down by approximately one page. Cursor moves to bottom of new view. (Also available in Insert & Visual modes).
+*   **`PageUp`**: Scroll viewport up by approximately one page. Cursor moves to top of new view. (Only in Insert Mode).
+*   **`PageDown`**: Scroll viewport down by approximately one page. Cursor moves to bottom of new view. (Only in Insert Mode).
 *   **`Ctrl + b`**: Scroll viewport up by approximately one page (Vim-like). Cursor moves to top of new view.
 *   **`Ctrl + f`**: Scroll viewport down by approximately one page (Vim-like). Cursor moves to bottom of new view.
 
@@ -59,19 +59,18 @@ The editor operates in several distinct modes:
 *   **`x`**: Delete the character under the cursor.
 *   **`d`**: Initiate **DELETE** operator. Enters **OPERATOR-PENDING Mode**.
     *   **`dd`**: Delete current line (text yanked).
-    *   **`dj`**: Delete current and next line (rudimentary, linewise yank).
-    *   **`dk`**: Delete current and previous line (rudimentary, linewise yank).
-    *   **`dl`**: Delete character under cursor (rudimentary, charwise yank).
-    *   **`dh`**: Delete character to the left (rudimentary, charwise yank).
+    *   **`dj`**: Delete current and next line (text yanked).
+    *   **`dk`**: Delete current and previous line (text yanked).
+    *   **`dl`**: Delete character under cursor (text yanked).
+    *   **`dh`**: Delete character to the left (text yanked).
 *   **`c`**: Initiate **CHANGE** operator. Enters **OPERATOR-PENDING Mode**.
     *   **`cc`**: Delete current line, then enter **INSERT Mode** (text yanked).
-    *   *(Other `c` + motion combinations are placeholders, but yank the affected text.)*
 *   **`y`**: Initiate **YANK** (copy) operator. Enters **OPERATOR-PENDING Mode**.
     *   **`yy`**: Yank current line.
-    *   **`yj`**: Yank current and next line (rudimentary, linewise).
-    *   **`yk`**: Yank current and previous line (rudimentary, linewise).
-    *   **`yl`**: Yank character under cursor (rudimentary, charwise).
-    *   **`yh`**: Yank character to the left (rudimentary, charwise).
+    *   **`yj`**: Yank current and next line (text yanked).
+    *   **`yk`**: Yank current and previous line (text yanked).
+    *   **`yl`**: Yank character under cursor (text yanked).
+    *   **`yh`**: Yank character to the left (text yanked).
 
 ### Yank and Put (Copy/Paste)
 
@@ -118,7 +117,6 @@ The editor operates in several distinct modes:
 *   Uses NORMAL mode movement keys to extend the selection:
     *   **`h`, `l`, `k`, `j`**
     *   **`w`, `b`, `e`**
-    *   **`0`, `^`, `$`** (Behavior might need refinement for linewise selection extent)
     *   **`PageUp`, `PageDown`**
 
 ### Operators on Selection
@@ -153,5 +151,3 @@ The editor operates in several distinct modes:
 *   **(Unknown commands display an error)**
 
 ---
-
-This documentation will be updated as new features are implemented.
