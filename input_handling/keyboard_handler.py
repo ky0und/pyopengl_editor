@@ -205,9 +205,6 @@ class KeyboardHandler:
         elif event.key == pg.K_e:
             self.cursor.move_to_word_end(self.buffer)
             action_taken = True
-
-        # Add more motions: w, b, e, $, 0, G, gg etc.
-        # These motions will update self.cursor, and the selection highlight will adjust automatically.
         
         # If cursor moved, it's an action
         if (self.cursor.line, self.cursor.col) != (original_cursor_line, original_cursor_col):
@@ -762,9 +759,6 @@ class KeyboardHandler:
                 print(f"CHANGE op on: '{text_to_operate_on}' - then insert mode")
                 self.cursor.line = start_op_line
                 self.cursor.col = start_op_col
-                # Perform deletion part first (like DELETE above) then...
-                # self.state.switch_to_mode(EditorMode.INSERT)
-                # This needs careful implementation of deleting the range.
                 
             self.state.reset_operator_state()
             return action_taken

@@ -8,65 +8,79 @@ The editor operates in several distinct modes:
 
 *   **NORMAL Mode:** Default mode for navigation, executing commands, and entering other modes.
 *   **INSERT Mode:** Used for typing and inserting text directly into the buffer.
-*   **COMMAND Mode:** Used for entering Ex-like commands (e.g., for file operations, quitting).
-*   **OPERATOR-PENDING Mode:** A temporary mode entered after an operator key (like `d`, `c`, `y`) is pressed, waiting for a motion or text object.
+*   **VISUAL Mode (`v`):** Character-wise selection of text.
+*   **VISUAL LINE Mode (`V`):** Linewise selection of text.
+*   **COMMAND Mode (`:`):** Used for entering Ex-like commands (e.g., for file operations, quitting).
+*   **OPERATOR-PENDING Mode:** A temporary mode entered after an operator key (like `d`, `c`, `y`) is pressed in NORMAL mode, waiting for a motion or text object.
 
 ---
 
-## Global Operations (Available in specific modes as noted)
+## Global Operations
 
 *   **`Esc`**:
-    *   From **INSERT Mode**: Switches to **NORMAL Mode**. The cursor typically moves one position to the left if not at the beginning of the line.
-    *   From **COMMAND Mode**: Cancels the current command input and returns to the previous mode (usually NORMAL).
-    *   From **OPERATOR-PENDING Mode**: Cancels the pending operator and returns to **NORMAL Mode**.
+    *   From **INSERT Mode**: Switches to **NORMAL Mode**. Cursor moves left if possible.
+    *   From **COMMAND Mode**: Cancels command input, returns to previous mode (usually NORMAL).
+    *   From **OPERATOR-PENDING Mode**: Cancels operator, returns to **NORMAL Mode**.
+    *   From **VISUAL / VISUAL LINE Mode**: Exits Visual mode, returns to **NORMAL Mode**.
 
 ---
 
 ## NORMAL Mode Operations
 
-### Entering Other Modes
+### Mode Switching & Entry
 
 *   **`i`**: Enter **INSERT Mode** before the current cursor position.
 *   **`a`**: Enter **INSERT Mode** after the current cursor position (append).
 *   **`o`**: Open a new line below the current line and enter **INSERT Mode**.
 *   **`O`** (Shift + `o`): Open a new line above the current line and enter **INSERT Mode**.
-*   **`:`** (Shift + `;`): Enter **COMMAND Mode**. The command line appears at the bottom, pre-filled with `:`.
+*   **`:`** (Shift + `;`): Enter **COMMAND Mode**.
+*   **`v`**: Enter **VISUAL Mode** (character-wise selection). Anchor set at current cursor.
+*   **`V`** (Shift + `v`): Enter **VISUAL LINE Mode** (linewise selection). Anchor set at current cursor.
 
 ### Cursor Movement
 
-*   **`h`**: Move cursor one character to the left (does not wrap to previous line).
-*   **`l`**: Move cursor one character to the right (stops at the last character of the line, does not wrap).
-*   **`k`**: Move cursor one line up.
-*   **`j`**: Move cursor one line down.
+*   **`h`**: Move cursor one character left (does not wrap).
+*   **`l`**: Move cursor one character right (stops at last character, does not wrap).
+*   **`k`**: Move cursor one line up. Viewport may scroll if cursor at top edge.
+*   **`j`**: Move cursor one line down. Viewport may scroll if cursor at bottom edge.
+*   **`0`** (zero or Shift + `)` on some layouts): Move cursor to the beginning of the current line (column 0).
+*   **`^`** (Shift + `6`): Move cursor to the first non-whitespace character on the current line.
+*   **`$`** (Shift + `4`): Move cursor to the end of the current line (last character).
+*   **`w`**: Move cursor forward to the start of the next word (treats newlines as whitespace).
+*   **`b`**: Move cursor backward to the start of the previous/current word (treats newlines as whitespace).
+*   **`e`**: Move cursor forward to the end of the current/next word (treats newlines as whitespace).
+*   **`PageUp`**: Scroll viewport up by approximately one page. Cursor moves to top of new view. (Also available in Insert & Visual modes).
+*   **`PageDown`**: Scroll viewport down by approximately one page. Cursor moves to bottom of new view. (Also available in Insert & Visual modes).
+*   **`Ctrl + b`**: Scroll viewport up by approximately one page (Vim-like). Cursor moves to top of new view.
+*   **`Ctrl + f`**: Scroll viewport down by approximately one page (Vim-like). Cursor moves to bottom of new view.
 
 ### Editing (Operators & Direct Commands)
 
-*   **`x`**: Delete the character under the cursor (similar to `dl`).
+*   **`x`**: Delete the character under the cursor.
 *   **`d`**: Initiate **DELETE** operator. Enters **OPERATOR-PENDING Mode**.
-    *   **`dd`**: Delete the current line (text is also yanked to default register).
-    *   **`dj`**: Delete the current line and the line below (rudimentary).
-    *   **`dk`**: Delete the current line and the line above (rudimentary).
-    *   **`dl`**: Delete character under the cursor (like `x`).
-    *   **`dh`**: Delete character to the left of the cursor (rudimentary).
+    *   **`dd`**: Delete current line (text yanked).
+    *   **`dj`**: Delete current and next line (rudimentary, linewise yank).
+    *   **`dk`**: Delete current and previous line (rudimentary, linewise yank).
+    *   **`dl`**: Delete character under cursor (rudimentary, charwise yank).
+    *   **`dh`**: Delete character to the left (rudimentary, charwise yank).
 *   **`c`**: Initiate **CHANGE** operator. Enters **OPERATOR-PENDING Mode**.
-    *   **`cc`**: Delete the current line, then enter **INSERT Mode** on the (now empty) line (text is also yanked).
-    *   *(Other `c` + motion combinations are placeholders)*
+    *   **`cc`**: Delete current line, then enter **INSERT Mode** (text yanked).
+    *   *(Other `c` + motion combinations are placeholders, but yank the affected text.)*
 *   **`y`**: Initiate **YANK** (copy) operator. Enters **OPERATOR-PENDING Mode**.
-    *   **`yy`** (or `Y`): Yank the current line into the default register.
-    *   **`yj`**: Yank the current line and the line below (rudimentary, linewise).
-    *   **`yk`**: Yank the current line and the line above (rudimentary, linewise).
-    *   **`yl`**: Yank the character under the cursor (rudimentary, charwise).
-    *   **`yh`**: Yank the character to the left of the cursor (rudimentary, charwise).
+    *   **`yy`**: Yank current line.
+    *   **`yj`**: Yank current and next line (rudimentary, linewise).
+    *   **`yk`**: Yank current and previous line (rudimentary, linewise).
+    *   **`yl`**: Yank character under cursor (rudimentary, charwise).
+    *   **`yh`**: Yank character to the left (rudimentary, charwise).
 
 ### Yank and Put (Copy/Paste)
 
-*   **(Yank operations are listed above under operator `y`)**
-*   **`p`**: Put (paste) the content of the default register:
-    *   If register contains linewise text: Puts the line(s) *below* the current line. Cursor moves to the start of the first pasted line.
-    *   If register contains charwise text: Puts the text *after* the current cursor position. Cursor moves to the end of the pasted text.
-*   **`P`** (Shift + `p`): Put (paste) the content of the default register:
-    *   If register contains linewise text: Puts the line(s) *above* the current line. Cursor moves to the start of the first pasted line.
-    *   If register contains charwise text: Puts the text *before* the current cursor position. Cursor moves to the start of the pasted text.
+*   **`p`**: Put (paste) after cursor:
+    *   Linewise: Below current line. Cursor to start of first pasted line.
+    *   Charwise: After cursor character. Cursor to end of pasted text. Handles multi-line charwise pastes.
+*   **`P`** (Shift + `p`): Put (paste) before cursor:
+    *   Linewise: Above current line. Cursor to start of first pasted line.
+    *   Charwise: Before cursor character. Cursor to start of pasted text. Handles multi-line charwise pastes.
 
 ---
 
@@ -74,55 +88,70 @@ The editor operates in several distinct modes:
 
 ### Text Input
 
-*   **Printable Characters**: Insert the character at the cursor position.
-*   **`Tab`**: Inserts 4 spaces (currently hardcoded).
+*   **Printable Characters**: Insert character at cursor.
+*   **`Tab`**: Insert 4 spaces.
 
 ### Editing
 
-*   **`Enter` / `Return`**: Split the current line at the cursor position, moving the text after the cursor to a new line below.
-*   **`Backspace`**:
-    *   If cursor is not at the beginning of a line: Deletes the character to the left of the cursor.
-    *   If cursor is at the beginning of a line (and not the first line): Merges the current line with the previous line.
+*   **`Enter` / `Return`**: Split line at cursor.
+*   **`Backspace`**: Delete character left of cursor, or merge with previous line if at BOL.
+*   **`Delete`**: Delete character *after* (or at) cursor, or merge with next line if at EOL.
 
-### Navigation (Arrow Keys)
+### Navigation
 
-*   **`Arrow Left`**: Move cursor one character left (can wrap to end of previous line).
-*   **`Arrow Right`**: Move cursor one character right (can wrap to start of next line).
-*   **`Arrow Up`**: Move cursor one line up.
-*   **`Arrow Down`**: Move cursor one line down.
+*   **`Arrow Left`**: Move cursor left (wraps to previous line).
+*   **`Arrow Right`**: Move cursor right (wraps to next line).
+*   **`Arrow Up`**: Move cursor up. Viewport may scroll.
+*   **`Arrow Down`**: Move cursor down. Viewport may scroll.
+*   **`PageUp`**: Scroll viewport up. Cursor to top of new view.
+*   **`PageDown`**: Scroll viewport down. Cursor to bottom of new view.
+
+---
+
+## VISUAL Mode & VISUAL LINE Mode Operations
+
+*   Entered from NORMAL mode using `v` (character-wise) or `V` (linewise).
+*   **`Esc`**: Exit Visual mode, return to NORMAL Mode.
+
+### Selection Movement
+
+*   Uses NORMAL mode movement keys to extend the selection:
+    *   **`h`, `l`, `k`, `j`**
+    *   **`w`, `b`, `e`**
+    *   **`0`, `^`, `$`** (Behavior might need refinement for linewise selection extent)
+    *   **`PageUp`, `PageDown`**
+
+### Operators on Selection
+
+*   Once text is selected, pressing an operator key applies it to the selection and returns to NORMAL mode.
+*   **`d`**: Delete the selected text (text is also yanked).
+*   **`c`**: Delete the selected text and enter **INSERT Mode** at the start of the selection area (text is also yanked).
+*   **`y`**: Yank (copy) the selected text into the default register.
 
 ---
 
 ## COMMAND Mode Operations
 
 *   Entered by typing **`:`** in NORMAL mode.
-*   Command line appears at the bottom of the screen.
 
-### Editing the Command Line
+### Editing Command Line
 
-*   **Printable Characters**: Append to the command buffer at the command cursor.
-*   **`Backspace`**: Delete character before the command cursor. If command buffer is just `:` and backspace is pressed, exits COMMAND mode.
-*   **`Arrow Left`**: Move command cursor left (stops after the initial `:`).
-*   **`Arrow Right`**: Move command cursor right.
-*   **`Esc`**: Exit COMMAND Mode and return to the previous mode, clearing the command buffer.
-*   **`Enter` / `Return`**: Execute the command in the command buffer.
+*   **Printable Characters**: Append to command.
+*   **`Backspace`**: Delete char in command. Exits if command was just `:`.
+*   **`Arrow Left` / `Arrow Right`**: Move command cursor.
+*   **`Esc`**: Exit COMMAND Mode.
+*   **`Enter` / `Return`**: Execute command.
 
 ### Supported Commands
 
-*   **`:e <filename>`**: Open (edit) the specified file. Clears current buffer, loads new file.
-    *   Example: `:e myfile.txt`
-*   **`:w`**: Write (save) the current buffer to its associated filename. If no filename is associated, it shows an error.
-*   **`:w <filename>`**: Write (save) the current buffer to the specified `<filename>`. Updates the buffer's associated filename.
-    *   Example: `:w newfile.txt`
-*   **`:q`**: Quit the editor.
-    *   If the buffer has unsaved changes (`dirty`), an error message is displayed, and the editor does not quit.
-*   **`:q!`**: Force quit the editor, discarding any unsaved changes.
-*   **`:wq`**: Write (save) the current buffer and then quit.
-    *   If no filename is associated and no filename is provided, an error is displayed.
-    *   Example: `:wq` (saves to current file then quits)
-    *   Example: `:wq myfile.txt` (saves to `myfile.txt` then quits)
-*   **(Unknown commands)**: Display an error message in the command line.
+*   **`:e <filename>`**: Edit (open) file.
+*   **`:w`**: Write to current file.
+*   **`:w <filename>`**: Write to specified file.
+*   **`:q`**: Quit (errors if buffer is dirty).
+*   **`:q!`**: Force quit.
+*   **`:wq`**: Write and quit.
+*   **(Unknown commands display an error)**
 
 ---
 
-This documentation reflects the state of implemented features. More commands and functionalities will be added in subsequent development phases.
+This documentation will be updated as new features are implemented.

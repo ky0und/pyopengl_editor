@@ -119,7 +119,7 @@ PYTHON_SYNTAX_RULES = [
 
 LANGUAGE_RULES_MAP = {
     "py": {"rules": PYTHON_SYNTAX_RULES, "name": "Python"},
-    # "js": {"rules": JAVASCRIPT_SYNTAX_RULES, "name": "JavaScript"}, # Example for future
+    # "js": {"rules": JAVASCRIPT_SYNTAX_RULES, "name": "JavaScript"}, # TODO if i feel like it
 }
 
 
