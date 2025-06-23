@@ -2,12 +2,7 @@
 
 ## Project Overview
 
-It's a vim-like editor but for windows and uses pygame with PyOpenGL
-
-The motivation behind this project is twofold:
-1.  To gain a deep understanding of editor internals, including buffer management, text rendering, input handling, modal interfaces, and advanced editing features.
-2.  Passing my uni's course.
- 
+It's a vim-like editor but for windows and uses pygame with PyOpenGL 
 
 ### Core Editor
 *   **Modal Editing:**
