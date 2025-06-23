@@ -126,40 +126,60 @@ class KeyboardHandler:
                         self.buffer._mark_dirty()
                         self.cursor.line = min(start_l, self.buffer.get_line_count() - 1)
                         self.cursor.col = 0
-                    else: # Character-wise deletion (more complex)
-                        # This needs robust range deletion. For now, a simplified placeholder:
-                        # Delete from (start_l, start_c) to (end_l, end_c)
-                        # If on same line:
-                        if start_l == end_l:
-                            line = self.buffer.get_line(start_l)
-                            if line is not None:
+                    else: # Character-wise deletion
+                        if start_l == end_l: # Single line character-wise delete
+                            line_content = self.buffer.get_line(start_l)
+                            if line_content is not None:
                                 self.renderer.invalidate_line_cache(start_l)
-                                self.buffer.lines[start_l] = line[:start_c] + line[end_c + 1:]
+                                # end_c is inclusive index of selection
+                                self.buffer.lines[start_l] = line_content[:start_c] + line_content[end_c + 1:]
                                 self.buffer._mark_dirty()
                                 self.cursor.line = start_l
                                 self.cursor.col = start_c
-                        else: # Multi-line character-wise delete (complex)
-                            # 1. Handle first line: line[:start_c]
-                            # 2. Delete middle lines (start_l+1 to end_l-1)
-                            # 3. Handle last line: line[end_c+1:]
-                            # 4. Concatenate first part and last part
-                            # This is a TODO for robust implementation.
-                            print("TODO: Multi-line character-wise delete from visual mode")
-                            # For now, fallback to deleting lines if selection spans multiple
-                            num_lines = end_l - start_l + 1
-                            self.renderer.handle_lines_deleted(start_l, num_lines) # etc. (like linewise)
-                            self.cursor.line = start_l; self.cursor.col = 0
+                        else: # Multi-line character-wise delete
+                            # 1. Get the part of the first line to keep (prefix)
+                            first_line_content = self.buffer.get_line(start_l) or ""
+                            prefix_first_line = first_line_content[:start_c]
 
+                            # 2. Get the part of the last line to keep (suffix)
+                            last_line_content = self.buffer.get_line(end_l) or ""
+                            # end_c is inclusive, so suffix starts at end_c + 1
+                            suffix_last_line = last_line_content[end_c + 1:]
+                            
+                            # 3. Combine prefix and suffix onto the first line
+                            self.buffer.lines[start_l] = prefix_first_line + suffix_last_line
+                            self.renderer.invalidate_line_cache(start_l) # First line changed
 
+                            # 4. Determine lines to delete (middle lines + the original last line of selection)
+                            # Lines from start_l + 1 up to and including end_l need to be removed
+                            num_intermediate_lines_to_delete = end_l - (start_l + 1) + 1
+                            
+                            if num_intermediate_lines_to_delete > 0:
+                                self.renderer.handle_lines_deleted(start_l + 1, num_intermediate_lines_to_delete)
+                                for _ in range(num_intermediate_lines_to_delete):
+                                    if start_l + 1 < self.buffer.get_line_count(): # Check bounds
+                                        self.buffer.lines.pop(start_l + 1) # Keep popping at start_l + 1
+                            
+                            if not self.buffer.lines: self.buffer.lines.append("") # Ensure not empty
+                            self.buffer._mark_dirty()
+                            
+                            # Set cursor position
+                            self.cursor.line = start_l
+                            self.cursor.col = start_c
+                    
+                    # After deletion, if operator was CHANGE, switch to INSERT mode
                     if op_to_apply == Operator.CHANGE:
-                        self.state.switch_to_mode(EditorMode.INSERT) # Cursor already placed by delete
+                        # Ensure cursor column is valid before insert (might be EOL after deletion)
+                        current_line_text = self.buffer.get_line(self.cursor.line) or ""
+                        self.cursor.col = min(self.cursor.col, len(current_line_text))
+                        self.state.switch_to_mode(EditorMode.INSERT)
                     else: # DELETE
                         self.state.switch_to_mode(EditorMode.NORMAL)
-                else: # YANK
-                    self.state.switch_to_mode(EditorMode.NORMAL)
-            else: # No text selected / error
+                else: # YANK (no buffer modification, just copy to register)
+                    self.state.switch_to_mode(EditorMode.NORMAL) 
+            else: # text_to_operate_on was None (should not happen if selection is valid)
                 self.state.switch_to_mode(EditorMode.NORMAL)
-            return True
+            return True # Action was taken
 
         # --- Handle PAGEUP/PAGEDOWN ---
         page_size = self.renderer.visible_lines_in_viewport -1
@@ -176,6 +196,15 @@ class KeyboardHandler:
         elif event.key == pg.K_PAGEDOWN:
             action_taken = self._scroll_viewport(page_size)
             return action_taken
+        elif event.key == pg.K_w:
+            self.cursor.move_word_forward(self.buffer)
+            action_taken = True
+        elif event.key == pg.K_b:
+            self.cursor.move_word_backward(self.buffer)
+            action_taken = True
+        elif event.key == pg.K_e:
+            self.cursor.move_to_word_end(self.buffer)
+            action_taken = True
 
         # Add more motions: w, b, e, $, 0, G, gg etc.
         # These motions will update self.cursor, and the selection highlight will adjust automatically.
@@ -265,24 +294,69 @@ class KeyboardHandler:
                 self.cursor.line = put_line_idx
                 self.cursor.col = 0
             else: # Character-wise put
-                put_line_idx = self.cursor.line
-                put_col_idx = self.cursor.col
-                
+                put_target_line_idx = self.cursor.line
+                put_target_col_idx = self.cursor.col
+
                 if not is_uppercase_P: # 'p' - put after cursor char
-                    put_col_idx += 1
+                    current_line_len = len(self.buffer.get_line(put_target_line_idx) or "")
+                    if current_line_len > 0 and put_target_col_idx < current_line_len :
+                        put_target_col_idx += 1
 
-                current_line = self.buffer.get_line(put_line_idx)
-                if current_line is not None:
-                    self.renderer.invalidate_line_cache(put_line_idx)
-                    new_line = current_line[:put_col_idx] + yanked_text + current_line[put_col_idx:]
-                    self.buffer.lines[put_line_idx] = new_line
-                    self.buffer._mark_dirty()
-                    self.cursor.col = put_col_idx if is_uppercase_P else put_col_idx + len(yanked_text) -1
-                    # Adjust cursor if it went past EOL
-                    self.cursor.col = min(self.cursor.col, len(self.buffer.get_line(put_line_idx)))
+                if '\n' in yanked_text:
+                    parts = yanked_text.split('\n')
+                    first_part = parts[0]
+                    remaining_parts = parts[1:]
 
+                    original_line_content = self.buffer.get_line(put_target_line_idx) or ""
+                    
+                    prefix = original_line_content[:put_target_col_idx]
+                    suffix = original_line_content[put_target_col_idx:]
 
-            self.cursor.set_pos(self.cursor.line, self.cursor.col, self.buffer)
+                    self.buffer.lines[put_target_line_idx] = prefix + first_part
+                    self.renderer.invalidate_line_cache(put_target_line_idx)
+                    
+                    lines_to_insert_for_renderer = []
+                    current_insert_line_idx = put_target_line_idx + 1
+
+                    for i, part in enumerate(remaining_parts):
+                        if i == len(remaining_parts) - 1: # Last part of the yanked text
+                            lines_to_insert_for_renderer.append(part + suffix)
+                        else:
+                            lines_to_insert_for_renderer.append(part)
+                    
+                    if lines_to_insert_for_renderer:
+                        self.renderer.handle_lines_inserted(current_insert_line_idx, len(lines_to_insert_for_renderer))
+                        for i, line_content in enumerate(lines_to_insert_for_renderer):
+                            self.buffer.lines.insert(current_insert_line_idx + i, line_content)
+
+                    if is_uppercase_P:
+                        self.cursor.line = put_target_line_idx
+                        self.cursor.col = put_target_col_idx
+                    else: # 'p'
+                        self.cursor.line = put_target_line_idx + len(remaining_parts)
+                        last_pasted_segment_len = len(remaining_parts[-1]) if remaining_parts else len(first_part)
+                        self.cursor.col = (len(prefix) if self.cursor.line == put_target_line_idx else 0) + last_pasted_segment_len -1
+                        if self.cursor.line > put_target_line_idx :
+                            self.cursor.col = len(remaining_parts[-1]) -1
+                        else: 
+                            self.cursor.col = put_target_col_idx + len(first_part) -1
+
+                else: # Single-line character-wise put (no newlines in yanked_text)
+                    current_line = self.buffer.get_line(put_target_line_idx)
+                    if current_line is not None: # Should always be true if line index is valid
+                        self.renderer.invalidate_line_cache(put_target_line_idx)
+                        new_line_content = current_line[:put_target_col_idx] + yanked_text + current_line[put_target_col_idx:]
+                        self.buffer.lines[put_target_line_idx] = new_line_content
+                        
+                        # Set cursor position
+                        if is_uppercase_P: # 'P'
+                            self.cursor.col = put_target_col_idx
+                        else: # 'p'
+                            self.cursor.col = put_target_col_idx + len(yanked_text) -1 # End of inserted text
+                            if len(yanked_text) == 0 : self.cursor.col = put_target_col_idx # if empty string, stay
+
+            # Ensure cursor is valid after put
+            self.cursor.set_pos(self.cursor.line, self.cursor.col, self.buffer) # Use existing set_pos for clamping
             return action_taken
 
         # --- Regular Normal Mode Commands (if not a Ctrl command) ---
@@ -707,9 +781,9 @@ class KeyboardHandler:
         Handles inclusive end for charwise, exclusive for linewise (sort of).
         Returns a list of strings (lines) or a single string for charwise.
         """
+        yanked_lines = []
         if is_linewise:
             # For linewise, end_line is inclusive
-            yanked_lines = []
             for i in range(start_line, end_line + 1):
                 line_content = self.buffer.get_line(i)
                 if line_content is not None:
@@ -717,13 +791,32 @@ class KeyboardHandler:
             return "\n".join(yanked_lines) # Return as a single string with newlines
         else:
             if start_line != end_line:
-                # TODO: Implement multi-line character-wise yank
-                print("Warning: Multi-line character-wise yank not fully implemented yet.")
-                line_content = self.buffer.get_line(start_line)
-                if line_content is not None:
-                    s_col, e_col = min(start_col, end_col), max(start_col, end_col)
-                    return line_content[s_col : e_col + 1]
-                return ""
+                first_line_content = self.buffer.get_line(start_line)
+                if first_line_content is not None:
+                    s_col = min(start_col, len(first_line_content))
+                    yanked_lines.append(first_line_content[s_col:])
+                else: # Should not happen if start_line is valid
+                    yanked_lines.append("") 
+                
+                # Middle lines (if any): full lines
+                for i in range(start_line + 1, end_line):
+                    middle_line_content = self.buffer.get_line(i)
+                    if middle_line_content is not None:
+                        yanked_lines.append(middle_line_content)
+                    else: # Should not happen
+                        yanked_lines.append("")
+                
+                # Last line: from its beginning up to end_col (inclusive)
+                last_line_content = self.buffer.get_line(end_line)
+                if last_line_content is not None:
+                    # end_col is the index of the last character to include
+                    e_col_slice_end = min(end_col + 1, len(last_line_content))
+                    yanked_lines.append(last_line_content[:e_col_slice_end])
+                else: # Should not happen
+                    pass # Don't append if last line is somehow None
+
+                # Join with newlines because we crossed line boundaries
+                return "\n".join(yanked_lines)
             else: # Single line character-wise
                 line_content = self.buffer.get_line(start_line)
                 if line_content is not None:
