@@ -65,7 +65,7 @@ The project requires the following Python packages:
         ```
 
 2.  **Install Dependencies:**
-    ```
+
     Install the dependencies using pip:
     ```bash
     pip install -r requirements.txt
