@@ -4,6 +4,8 @@
 
 It's a vim-like editor but for windows and uses pygame with PyOpenGL 
 
+![til](./assets/showcase.mp4)
+
 ### Core Editor
 *   **Modal Editing:**
     *   **NORMAL Mode:** For navigation and commands.
